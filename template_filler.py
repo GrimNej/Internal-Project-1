@@ -5,45 +5,36 @@ Generates ExtendScript (.jsx) to modify the AEP template with AI-generated conte
 
 import os
 import shutil
+import time
 
 from config import TEMPLATES_DIR, OUTPUT_DIR
 
 
 def generate_fill_script(aep_file_path, content_plan, generated_images,
                           voiceover_path, template_summary, logger):
-    """
-    Generate an ExtendScript that fills the AEP template with AI content.
-    Also creates a working copy of the .aep file.
-    
-    Returns tuple: (jsx_file_path, modified_aep_path)
-    """
+    """Generate an ExtendScript that fills the AEP template with AI content."""
     logger.section("Template Fill Script Generation")
 
-    # Create a working copy of the AEP file
     aep_filename = os.path.basename(aep_file_path)
     aep_name, aep_ext = os.path.splitext(aep_filename)
-    modified_aep_path = os.path.join(
-        OUTPUT_DIR, f"{aep_name}_mofa_filled{aep_ext}"
-    )
+
+    timestamp = int(time.time())
+    modified_aep_path = os.path.join(OUTPUT_DIR, f"{aep_name}_mofa_{timestamp}{aep_ext}")
 
     logger.info(f"Creating working copy: {modified_aep_path}")
     shutil.copy2(aep_file_path, modified_aep_path)
 
-    # Also copy any associated files in the same directory as the AEP
-    # (AEP projects often reference files relative to their location)
     aep_dir = os.path.dirname(aep_file_path)
     modified_dir = os.path.dirname(modified_aep_path)
-
-    # Copy the entire folder structure if the AEP is in a subfolder with assets
     copy_associated_assets(aep_dir, modified_dir, aep_filename, logger)
 
-    # Build the ExtendScript
     jsx_content = build_fill_jsx(
         modified_aep_path, content_plan, generated_images,
         voiceover_path, template_summary, logger
     )
 
     jsx_file_path = os.path.join(TEMPLATES_DIR, "fill_template.jsx")
+
     with open(jsx_file_path, "w", encoding="utf-8") as f:
         f.write(jsx_content)
 
@@ -52,339 +43,361 @@ def generate_fill_script(aep_file_path, content_plan, generated_images,
 
 
 def copy_associated_assets(source_dir, dest_dir, aep_filename, logger):
-    """Copy files that might be referenced by the AEP template."""
+    """Copy associated assets."""
     if source_dir == dest_dir:
         return
 
     try:
         for item in os.listdir(source_dir):
             if item == aep_filename:
-                continue  # Already copied
+                continue
             source_item = os.path.join(source_dir, item)
             dest_item = os.path.join(dest_dir, item)
 
             if os.path.isfile(source_item) and not os.path.exists(dest_item):
-                # Copy common asset file types
                 ext = os.path.splitext(item)[1].lower()
                 asset_extensions = [
-                    ".png", ".jpg", ".jpeg", ".tif", ".tiff",
-                    ".psd", ".ai", ".mov", ".mp4", ".avi",
-                    ".wav", ".mp3", ".aif", ".m4a", ".gif",
-                    ".bmp", ".eps", ".svg"
+                    ".png", ".jpg", ".jpeg", ".tif", ".psd", ".ai",
+                    ".mov", ".mp4", ".wav", ".mp3"
                 ]
                 if ext in asset_extensions:
                     shutil.copy2(source_item, dest_item)
-                    logger.info(f"  Copied associated asset: {item}")
-
-            elif os.path.isdir(source_item):
-                # Copy subdirectories (footage folders, etc.)
-                if not os.path.exists(dest_item):
-                    shutil.copytree(source_item, dest_item)
-                    logger.info(f"  Copied associated folder: {item}")
-
+                    logger.info(f"  Copied: {item}")
+            elif os.path.isdir(source_item) and not os.path.exists(dest_item):
+                shutil.copytree(source_item, dest_item)
+                logger.info(f"  Copied folder: {item}")
     except Exception as e:
-        logger.warning(f"Could not copy some associated assets: {str(e)}")
+        logger.warning(f"Asset copy error: {str(e)}")
 
 
 def build_fill_jsx(modified_aep_path, content_plan, generated_images,
                     voiceover_path, template_summary, logger):
-    """Build the ExtendScript that modifies the AEP template."""
+    """Build the ExtendScript with fixed image replacement."""
 
-    # Prepare paths for JavaScript
     aep_path_js = modified_aep_path.replace("\\", "/")
+    debug_log_path = os.path.join(OUTPUT_DIR, "jsx_debug.log").replace("\\", "/")
 
-    # Build text replacement commands
-    text_commands = build_text_commands(content_plan, template_summary, logger)
-
-    # Build image replacement commands
-    image_commands = build_image_commands(
-        generated_images, template_summary, logger
-    )
-
-    # Build audio import command
-    audio_command = build_audio_command(
-        voiceover_path, template_summary, logger
-    )
-
-    # Determine the main composition name
-    main_comp_name = template_summary.get("main_comp_name", "")
+    text_commands = build_text_commands(content_plan, logger)
+    image_commands = build_image_commands(generated_images, logger)
+    audio_command = build_audio_command(voiceover_path, logger)
 
     jsx = f"""// MoFA Effect - Template Fill Script
-// Auto-generated. Modifies the AEP template with AI-generated content.
-
 (function() {{
-    // Open the project
-    var projFile = new File("{aep_path_js}");
-    if (!projFile.exists) {{
-        alert("MoFA Effect Error: Project file not found.");
-        return;
+    var debugLog = [];
+
+    function log(msg) {{
+        debugLog.push(msg);
     }}
 
-    app.open(projFile);
-    var project = app.project;
+    function saveLog() {{
+        var logFile = new File("{debug_log_path}");
+        logFile.open("w");
+        logFile.write(debugLog.join("\\n"));
+        logFile.close();
+    }}
 
-    // Find the main composition
-    var mainComp = null;
-    var mainCompName = "{main_comp_name}";
+    try {{
+        log("=== MoFA Effect Fill Script Started ===");
+        log("Timestamp: " + new Date().toString());
 
-    if (mainCompName && mainCompName.length > 0) {{
-        // Try to find by name
+        var projFile = new File("{aep_path_js}");
+        if (!projFile.exists) {{
+            log("ERROR: Project file not found: {aep_path_js}");
+            saveLog();
+            return;
+        }}
+        log("Project file found: " + projFile.fsName);
+
+        app.open(projFile);
+        var project = app.project;
+        log("Project opened successfully");
+        log("Total items in project: " + project.numItems);
+
+        // Log all items
         for (var i = 1; i <= project.numItems; i++) {{
-            if (project.item(i) instanceof CompItem &&
-                project.item(i).name === mainCompName) {{
+            var item = project.item(i);
+            var itemType = "Unknown";
+            if (item instanceof CompItem) itemType = "CompItem";
+            else if (item instanceof FootageItem) itemType = "FootageItem";
+            else if (item instanceof FolderItem) itemType = "FolderItem";
+            log("Item " + i + ": " + item.name + " (" + itemType + ")");
+        }}
+
+        // Find Main Comp
+        var mainComp = null;
+        for (var i = 1; i <= project.numItems; i++) {{
+            if (project.item(i) instanceof CompItem && project.item(i).name === "Main Comp") {{
                 mainComp = project.item(i);
+                log("Found Main Comp at index " + i);
                 break;
             }}
         }}
-    }}
 
-    if (!mainComp) {{
-        // Fallback: use the longest composition
-        var maxDuration = 0;
-        for (var i = 1; i <= project.numItems; i++) {{
-            if (project.item(i) instanceof CompItem) {{
-                if (project.item(i).duration > maxDuration) {{
-                    maxDuration = project.item(i).duration;
+        if (!mainComp) {{
+            log("ERROR: Main Comp not found. Trying longest comp...");
+            var maxDur = 0;
+            for (var i = 1; i <= project.numItems; i++) {{
+                if (project.item(i) instanceof CompItem && project.item(i).duration > maxDur) {{
+                    maxDur = project.item(i).duration;
                     mainComp = project.item(i);
                 }}
             }}
+            if (mainComp) {{
+                log("Using comp: " + mainComp.name + " (duration: " + mainComp.duration + ")");
+            }} else {{
+                log("FATAL: No compositions found at all");
+                saveLog();
+                return;
+            }}
         }}
-    }}
 
-    if (!mainComp) {{
-        alert("MoFA Effect Error: No composition found in project.");
-        project.close(CloseOptions.DO_NOT_SAVE_CHANGES);
-        return;
-    }}
+        log("Main Comp: " + mainComp.name);
+        log("  Duration: " + mainComp.duration + "s");
+        log("  Size: " + mainComp.width + "x" + mainComp.height);
+        log("  Layers: " + mainComp.numLayers);
 
-    // --- TEXT REPLACEMENTS ---
+        for (var i = 1; i <= mainComp.numLayers; i++) {{
+            var layer = mainComp.layer(i);
+            var lType = "Unknown";
+            if (layer instanceof TextLayer) lType = "TextLayer";
+            else if (layer instanceof ShapeLayer) lType = "ShapeLayer";
+            else if (layer instanceof AVLayer) lType = "AVLayer";
+            log("  Layer " + i + ": " + layer.name + " (" + lType + ")");
+        }}
+
 {text_commands}
-
-    // --- IMAGE REPLACEMENTS ---
 {image_commands}
-
-    // --- AUDIO IMPORT ---
 {audio_command}
 
-    // Save the project
-    project.save();
+        log("=== Saving Project ===");
+        project.save();
+        log("Project saved to: " + project.file.fsName);
+        log("=== Script Completed Successfully ===");
+        saveLog();
 
-    // Close without additional save prompt
-    // (project is already saved above)
-
+    }} catch(e) {{
+        log("FATAL ERROR: " + e.toString());
+        if (e.line) log("Line: " + e.line);
+        saveLog();
+    }}
 }})();
 """
     return jsx
 
 
-def build_text_commands(content_plan, template_summary, logger):
-    """Build ExtendScript commands for text layer replacements."""
+def build_text_commands(content_plan, logger):
+    """Build text replacement commands."""
     text_replacements = content_plan.get("text_replacements", [])
 
     if not text_replacements:
-        logger.info("No text replacements to apply.")
-        return "    // No text replacements specified."
+        return '    log("No text replacements specified");'
 
-    commands = []
-    commands.append("    // Replace text layers with AI-generated content")
-
+    website = ""
     for tr in text_replacements:
-        layer_name = tr.get("layer_name", "")
-        layer_index = tr.get("layer_index", 0)
+        layer_name = tr.get("layer_name", "").lower()
         new_text = tr.get("new_text", "")
+        if "website" in layer_name or "url" in layer_name or "web" in layer_name:
+            website = new_text
 
-        if not new_text:
-            continue
+    if not website and len(text_replacements) > 1:
+        website = text_replacements[1].get("new_text", "")
 
-        # Escape the text for JavaScript
-        escaped_text = (
-            new_text.replace("\\", "\\\\")
-                     .replace('"', '\\"')
-                     .replace("\n", "\\n")
-                     .replace("\r", "")
-        )
-        escaped_name = layer_name.replace("\\", "\\\\").replace('"', '\\"')
+    if not website:
+        website = "example.com"
 
-        commands.append(f"""
-    // Replace text: "{layer_name}"
-    (function() {{
-        var found = false;
-        // Try by name first
-        try {{
-            for (var i = 1; i <= mainComp.numLayers; i++) {{
-                var layer = mainComp.layer(i);
-                if (layer instanceof TextLayer && layer.name === "{escaped_name}") {{
-                    var textProp = layer.property("Source Text");
+    escaped_website = website.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    logger.info(f"  Text: [Text_01] -> \"{website}\"")
+
+    return f'''
+    log("=== TEXT REPLACEMENT ===");
+    try {{
+        var textFound = false;
+        for (var i = 1; i <= mainComp.numLayers; i++) {{
+            var layer = mainComp.layer(i);
+            if (layer.name === "Text_01") {{
+                log("Found Text_01 at layer " + i);
+
+                var textProp = null;
+                try {{
+                    textProp = layer.property("ADBE Text Properties").property("ADBE Text Document");
+                }} catch(e1) {{
+                    log("ADBE path failed, trying Source Text...");
+                    try {{
+                        textProp = layer.property("Source Text");
+                    }} catch(e2) {{
+                        log("Source Text also failed: " + e2.toString());
+                    }}
+                }}
+
+                if (textProp) {{
                     var textDoc = textProp.value;
-                    textDoc.text = "{escaped_text}";
+                    log("Current text: " + textDoc.text);
+                    textDoc.text = "{escaped_website}";
                     textProp.setValue(textDoc);
-                    found = true;
+                    var verify = textProp.value;
+                    log("New text: " + verify.text);
+                    textFound = true;
+                }} else {{
+                    log("ERROR: Could not access text property");
+                }}
+                break;
+            }}
+        }}
+        if (!textFound) {{
+            log("WARNING: Text_01 not found or text not changed");
+        }}
+    }} catch(e) {{
+        log("ERROR in text replacement: " + e.toString());
+    }}
+'''
+
+
+def build_image_commands(generated_images, logger):
+    """Build image replacement using File object."""
+    if not generated_images:
+        logger.info("  No images - keeping template default")
+        return '    log("No images to replace");'
+
+    img = generated_images[0]
+    img_path = img["path"].replace("\\", "/")
+    logger.info(f"  Logo: {os.path.basename(img['path'])}")
+
+    return f'''
+    log("=== IMAGE REPLACEMENT ===");
+    log("Logo file: {img_path}");
+    try {{
+        var logoFile = new File("{img_path}");
+        log("File exists: " + logoFile.exists);
+
+        if (!logoFile.exists) {{
+            log("ERROR: Logo file not found");
+        }} else {{
+            var replaced = false;
+
+            // Method 1: Search top-level project items
+            log("Searching top-level items...");
+            for (var i = 1; i <= project.numItems; i++) {{
+                var item = project.item(i);
+                if (item instanceof FootageItem && item.name.indexOf("Multi Color") >= 0) {{
+                    log("Found footage: " + item.name + " at index " + i);
+                    item.replace(logoFile);
+                    log("Replaced successfully via top-level search");
+                    replaced = true;
                     break;
                 }}
             }}
-        }} catch(e) {{}}
 
-        // If not found by name and we have an index, try by index
-        if (!found && {layer_index} > 0) {{
-            try {{
-                var layer = mainComp.layer({layer_index});
-                if (layer instanceof TextLayer) {{
-                    var textProp = layer.property("Source Text");
-                    var textDoc = textProp.value;
-                    textDoc.text = "{escaped_text}";
-                    textProp.setValue(textDoc);
+            // Method 2: Search inside ALL folders recursively
+            if (!replaced) {{
+                log("Not found at top level. Searching folders...");
+                for (var i = 1; i <= project.numItems; i++) {{
+                    var item = project.item(i);
+                    if (item instanceof FolderItem) {{
+                        log("Checking folder: " + item.name + " (" + item.numItems + " items)");
+                        for (var j = 1; j <= item.numItems; j++) {{
+                            var sub = item.item(j);
+                            if (sub instanceof FootageItem) {{
+                                log("  Footage in folder: " + sub.name);
+                                if (sub.name.indexOf("Multi Color") >= 0) {{
+                                    log("  Found it! Replacing...");
+                                    sub.replace(logoFile);
+                                    log("  Replaced successfully via folder search");
+                                    replaced = true;
+                                    break;
+                                }}
+                            }}
+                            // Check sub-folders too
+                            if (sub instanceof FolderItem) {{
+                                log("  Sub-folder: " + sub.name + " (" + sub.numItems + " items)");
+                                for (var k = 1; k <= sub.numItems; k++) {{
+                                    var subsub = sub.item(k);
+                                    if (subsub instanceof FootageItem) {{
+                                        log("    Footage: " + subsub.name);
+                                        if (subsub.name.indexOf("Multi Color") >= 0) {{
+                                            log("    Found it! Replacing...");
+                                            subsub.replace(logoFile);
+                                            log("    Replaced successfully via sub-folder");
+                                            replaced = true;
+                                            break;
+                                        }}
+                                    }}
+                                }}
+                                if (replaced) break;
+                            }}
+                        }}
+                        if (replaced) break;
+                    }}
                 }}
-            }} catch(e) {{}}
-        }}
+            }}
 
-        // If still not found, search all compositions
-        if (!found) {{
-            try {{
-                for (var c = 1; c <= project.numItems; c++) {{
-                    if (project.item(c) instanceof CompItem) {{
-                        var comp = project.item(c);
-                        for (var j = 1; j <= comp.numLayers; j++) {{
-                            var lyr = comp.layer(j);
-                            if (lyr instanceof TextLayer && lyr.name === "{escaped_name}") {{
-                                var tp = lyr.property("Source Text");
-                                var td = tp.value;
-                                td.text = "{escaped_text}";
-                                tp.setValue(td);
+            // Method 3: Find the layer in Your Logo Here comp and replace its source
+            if (!replaced) {{
+                log("Folder search failed. Trying comp layer replacement...");
+                for (var i = 1; i <= project.numItems; i++) {{
+                    if (project.item(i) instanceof CompItem && project.item(i).name === "Your Logo Here") {{
+                        var logoComp = project.item(i);
+                        log("Found Your Logo Here comp with " + logoComp.numLayers + " layers");
+                        for (var j = 1; j <= logoComp.numLayers; j++) {{
+                            var lyr = logoComp.layer(j);
+                            log("  Layer: " + lyr.name);
+                            if (lyr.source && lyr.source instanceof FootageItem) {{
+                                log("  Has footage source: " + lyr.source.name);
+                                lyr.source.replace(logoFile);
+                                log("  Replaced via comp layer source!");
+                                replaced = true;
                                 break;
                             }}
                         }}
-                    }}
-                }}
-            }} catch(e) {{}}
-        }}
-    }})();""")
-
-        logger.info(f"  Text replacement: [{layer_name}] -> \"{new_text[:50]}...\"")
-
-    return "\n".join(commands)
-
-
-def build_image_commands(generated_images, template_summary, logger):
-    """Build ExtendScript commands for image/footage replacements."""
-    if not generated_images:
-        logger.info("No image replacements to apply.")
-        return "    // No image replacements specified."
-
-    commands = []
-    commands.append("    // Replace footage items with AI-generated images")
-
-    for img in generated_images:
-        img_path = img["path"].replace("\\", "/")
-        layer_name = img.get("layer_name", "")
-        layer_index = img.get("layer_index", 0)
-        purpose = img.get("purpose", "general")
-
-        escaped_name = layer_name.replace("\\", "\\\\").replace('"', '\\"')
-
-        commands.append(f"""
-    // Replace image: "{layer_name}" ({purpose})
-    (function() {{
-        var imgFile = new File("{img_path}");
-        if (!imgFile.exists) return;
-
-        var importOptions = new ImportOptions(imgFile);
-        var newFootage = project.importFile(importOptions);
-
-        // Try to find the layer and replace its source
-        var found = false;
-
-        // Search by layer name in main comp
-        try {{
-            for (var i = 1; i <= mainComp.numLayers; i++) {{
-                var layer = mainComp.layer(i);
-                if (layer.name === "{escaped_name}" && layer.source) {{
-                    layer.replaceSource(newFootage, false);
-                    found = true;
-                    break;
-                }}
-            }}
-        }} catch(e) {{}}
-
-        // If not found by exact name, try partial match
-        if (!found) {{
-            try {{
-                for (var i = 1; i <= mainComp.numLayers; i++) {{
-                    var layer = mainComp.layer(i);
-                    var lowerName = layer.name.toLowerCase();
-                    var searchTerm = "{purpose}".toLowerCase();
-                    if (layer.source && layer.source instanceof FootageItem &&
-                        (lowerName.indexOf(searchTerm) >= 0 ||
-                         lowerName.indexOf("logo") >= 0 ||
-                         lowerName.indexOf("image") >= 0 ||
-                         lowerName.indexOf("placeholder") >= 0 ||
-                         lowerName.indexOf("photo") >= 0)) {{
-                        layer.replaceSource(newFootage, false);
-                        found = true;
                         break;
                     }}
                 }}
-            }} catch(e) {{}}
-        }}
-
-        // Also search all compositions
-        if (!found) {{
-            try {{
-                for (var c = 1; c <= project.numItems; c++) {{
-                    if (project.item(c) instanceof CompItem) {{
-                        var comp = project.item(c);
-                        for (var j = 1; j <= comp.numLayers; j++) {{
-                            var lyr = comp.layer(j);
-                            if (lyr.name === "{escaped_name}" && lyr.source) {{
-                                lyr.replaceSource(newFootage, false);
-                                found = true;
-                                break;
-                            }}
-                        }}
-                        if (found) break;
-                    }}
-                }}
-            }} catch(e) {{}}
-        }}
-    }})();""")
-
-        logger.info(f"  Image replacement: [{layer_name}] -> {os.path.basename(img['path'])}")
-
-    return "\n".join(commands)
-
-
-def build_audio_command(voiceover_path, template_summary, logger):
-    """Build ExtendScript command to import and place voiceover audio."""
-    if not voiceover_path:
-        logger.info("No voiceover to import.")
-        return "    // No voiceover audio to import."
-
-    audio_path_js = voiceover_path.replace("\\", "/")
-
-    command = f"""
-    // Import and place voiceover audio
-    (function() {{
-        var audioFile = new File("{audio_path_js}");
-        if (!audioFile.exists) return;
-
-        try {{
-            var importOptions = new ImportOptions(audioFile);
-            var audioItem = project.importFile(importOptions);
-
-            // Add audio layer to main composition
-            var audioLayer = mainComp.layers.add(audioItem);
-            audioLayer.startTime = 0;
-
-            // If audio is longer than comp, trim it
-            if (audioLayer.outPoint > mainComp.duration) {{
-                audioLayer.outPoint = mainComp.duration;
             }}
 
-            // Move audio layer to bottom of layer stack
-            audioLayer.moveToEnd();
-        }} catch(e) {{
-            // Audio import failed, continue without it
+            if (!replaced) {{
+                log("WARNING: Could not replace logo through any method");
+                log("Listing all project items with types:");
+                for (var i = 1; i <= project.numItems; i++) {{
+                    var it = project.item(i);
+                    var tp = "unknown";
+                    if (it instanceof CompItem) tp = "Comp";
+                    else if (it instanceof FootageItem) tp = "Footage";
+                    else if (it instanceof FolderItem) tp = "Folder";
+                    log("  " + i + ": [" + tp + "] " + it.name);
+                }}
+            }}
         }}
-    }})();"""
+    }} catch(e) {{
+        log("ERROR in image replacement: " + e.toString());
+        if (e.line) log("Line: " + e.line);
+    }}
+'''
 
-    logger.info(f"  Voiceover will be imported: {os.path.basename(voiceover_path)}")
-    return command
+
+def build_audio_command(voiceover_path, logger):
+    """Build audio import command."""
+    if not voiceover_path:
+        return '    log("No voiceover to import");'
+
+    audio_path_js = voiceover_path.replace("\\", "/")
+    logger.info(f"  Audio: {os.path.basename(voiceover_path)}")
+
+    return f'''
+    log("=== AUDIO IMPORT ===");
+    try {{
+        var audioFile = new File("{audio_path_js}");
+        log("Audio file exists: " + audioFile.exists);
+
+        if (!audioFile.exists) {{
+            log("ERROR: Audio file not found");
+        }} else {{
+            var importOptions = new ImportOptions(audioFile);
+            var audioItem = project.importFile(importOptions);
+            log("Audio imported: " + audioItem.name);
+            var audioLayer = mainComp.layers.add(audioItem);
+            audioLayer.moveToEnd();
+            log("Audio layer added and moved to end");
+        }}
+    }} catch(e) {{
+        log("ERROR in audio import: " + e.toString());
+    }}
+'''

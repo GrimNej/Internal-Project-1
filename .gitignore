@@ -1,0 +1,5 @@
+.env
+/output
+/templates
+/downloads
+/__pycache__

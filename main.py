@@ -3,21 +3,17 @@ MoFA Effect - Main Entry Point
 AI-Powered Video Generation Using After Effects Templates
 
 Usage: python main.py
-
-The system will prompt for all required inputs interactively.
 """
 
 import os
 import sys
+import shutil
 import time
-import json
 
-# Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config import (
-    ensure_directories, OUTPUT_DIR, AERENDER_PATH,
-    IMAGES_DIR, AUDIO_DIR, LOGS_DIR
+    ensure_directories, OUTPUT_DIR, AERENDER_PATH, LOGS_DIR
 )
 from utils import Logger, save_json, ask_user, validate_file_exists
 from aep_parser import parse_aep_binary
@@ -35,7 +31,7 @@ def print_banner():
     ================================================================
          MoFA Effect - AI-Powered Video Generation
          Using After Effects Templates
-         Prototype v0.1
+         Prototype v0.2
     ================================================================
     """
     print(banner)
@@ -46,28 +42,32 @@ def check_dependencies(logger):
     logger.section("Dependency Check")
     all_good = True
 
-    # Check aerender
     if os.path.isfile(AERENDER_PATH):
-        logger.info(f"aerender.exe: Found at {AERENDER_PATH}")
+        logger.info(f"aerender.exe: Found")
     else:
         logger.error(f"aerender.exe: NOT FOUND at {AERENDER_PATH}")
-        logger.error("Please update AERENDER_PATH in config.py")
         all_good = False
 
-    # Check Python packages
-    required_packages = {
-        "edge_tts": "edge-tts (pip install edge-tts)",
-        "imageio_ffmpeg": "imageio-ffmpeg (pip install imageio-ffmpeg)"
+    packages = {
+        "requests": "pip install requests",
+        "edge_tts": "pip install edge-tts",
+        "imageio_ffmpeg": "pip install imageio-ffmpeg",
     }
 
-    for module, install_name in required_packages.items():
+    for module, install_cmd in packages.items():
         try:
             __import__(module)
             logger.info(f"{module}: Installed")
         except ImportError:
-            logger.error(f"{module}: NOT INSTALLED")
-            logger.error(f"  Install with: pip install {install_name.split('(')[1].rstrip(')')}")
+            logger.error(f"{module}: NOT INSTALLED -- {install_cmd}")
             all_good = False
+
+    # Check Pillow separately
+    try:
+        from PIL import Image
+        logger.info("Pillow: Installed")
+    except ImportError:
+        logger.warning("Pillow: NOT INSTALLED -- pip install pillow (needed for placeholder images)")
 
     return all_good
 
@@ -76,15 +76,12 @@ def get_user_inputs(logger):
     """Collect all required inputs from the user."""
     logger.section("User Input Collection")
 
-    # Get AEP file path
     print()
     print("Enter the full path to your After Effects template (.aep file).")
-    print("Example: C:\\Users\\YourName\\Downloads\\SplashLogoReveal.aep")
     print()
 
     while True:
         aep_path = ask_user("AEP template path")
-        # Remove quotes if user pasted a quoted path
         aep_path = aep_path.strip('"').strip("'")
 
         if validate_file_exists(aep_path, "AEP template"):
@@ -93,30 +90,27 @@ def get_user_inputs(logger):
                 logger.info(f"Template file accepted: {aep_path}")
                 break
             else:
-                print(f"Warning: File extension is '{ext}', expected '.aep' or '.aepx'.")
+                print(f"Warning: File extension is '{ext}', expected '.aep'.")
                 confirm = ask_user("Continue anyway? (yes/no)", "yes")
                 if confirm.lower() in ["yes", "y"]:
                     break
         else:
             print("File not found. Please check the path and try again.")
 
-    # Get Groq API key
     print()
     print("Enter your Groq API key.")
     print("Get one free at: https://console.groq.com/keys")
     print()
 
     api_key = ask_user("Groq API key")
-    while not api_key or len(api_key) < 10:
+    while not api_key or len(api_key) < 20:
         print("API key seems too short. Please enter a valid key.")
         api_key = ask_user("Groq API key")
-
     logger.info("Groq API key received.")
 
-    # Get template description
     print()
     print("Describe the template you provided.")
-    print("Example: Splash logo reveal with colorful ink splashes, 7 seconds")
+    print("Example: Splash logo reveal with colorful ink splashes, 10 seconds")
     print()
 
     template_description = ask_user(
@@ -125,19 +119,15 @@ def get_user_inputs(logger):
     )
     logger.info(f"Template description: {template_description}")
 
-    # Get creative prompt
     print()
     print("Now describe the video you want to create.")
     print("Be specific about brand name, style, colors, and target audience.")
-    print("Example: Create a logo reveal for TechNova, a futuristic AI startup,")
-    print("         use blue and silver colors, sleek and modern feel")
     print()
 
     creative_prompt = ask_user("Your creative brief")
     while not creative_prompt or len(creative_prompt) < 10:
         print("Please provide a more detailed description.")
         creative_prompt = ask_user("Your creative brief")
-
     logger.info(f"Creative brief: {creative_prompt}")
 
     return {
@@ -148,9 +138,37 @@ def get_user_inputs(logger):
     }
 
 
+def cleanup_previous_run(logger):
+    """Delete all files and subfolders in the output directory."""
+    logger.section("Cleaning Up Previous Run")
+    if not os.path.exists(OUTPUT_DIR):
+        logger.info("Output directory does not exist. Nothing to clean.")
+        return
+
+    try:
+        for item in os.listdir(OUTPUT_DIR):
+            item_path = os.path.join(OUTPUT_DIR, item)
+            try:
+                if os.path.isfile(item_path) or os.path.islink(item_path):
+                    os.unlink(item_path)
+                    logger.info(f"  Removed file: {item}")
+                elif os.path.isdir(item_path):
+                    shutil.rmtree(item_path)
+                    logger.info(f"  Removed folder: {item}")
+            except Exception as e:
+                logger.warning(f"  Failed to remove {item}: {e}")
+        logger.info("Cleanup complete.")
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
+
+
 def run_pipeline(inputs, logger):
     """Execute the full MoFA Effect pipeline."""
     pipeline_start = time.time()
+
+    # Clean up previous run to prevent AE caching issues
+    cleanup_previous_run(logger)
+    ensure_directories()
 
     aep_path = inputs["aep_path"]
     api_key = inputs["api_key"]
@@ -162,21 +180,13 @@ def run_pipeline(inputs, logger):
     # ===================================================================
     logger.section("PHASE 1: Template Analysis")
 
-    # Step 1A: Binary parsing (fast, always works)
     binary_info = parse_aep_binary(aep_path, logger)
     save_json(binary_info, os.path.join(OUTPUT_DIR, "binary_analysis.json"))
 
-    # Step 1B: ExtendScript deep introspection (slower, more detailed)
     logger.info("")
-    logger.info(
-        "Attempting deep introspection via After Effects..."
-    )
-    logger.info(
-        "After Effects will open briefly in the background."
-    )
-    logger.info(
-        "If a dialog box appears, please close it manually."
-    )
+    logger.info("Attempting deep introspection via After Effects...")
+    logger.info("After Effects will open briefly in the background.")
+    logger.info("If a dialog box appears, please close it manually.")
     print()
     proceed = ask_user(
         "Ready to run After Effects introspection? (yes/skip)",
@@ -194,7 +204,6 @@ def run_pipeline(inputs, logger):
     else:
         logger.info("Skipping ExtendScript introspection.")
 
-    # Step 1C: Build unified template summary
     template_summary = build_template_summary(
         analysis, binary_info, template_description, logger
     )
@@ -203,7 +212,6 @@ def run_pipeline(inputs, logger):
         os.path.join(OUTPUT_DIR, "template_summary.json")
     )
 
-    # If introspection did not work, ask user for critical info
     if not analysis:
         logger.warning(
             "Deep introspection was not available. "
@@ -212,11 +220,11 @@ def run_pipeline(inputs, logger):
         print()
         print("Since deep analysis was not available, please provide:")
 
-        duration_str = ask_user("Template duration in seconds", "7")
+        duration_str = ask_user("Template duration in seconds", "10")
         try:
             template_summary["duration"] = float(duration_str)
         except ValueError:
-            template_summary["duration"] = 7.0
+            template_summary["duration"] = 10.0
 
         resolution = ask_user("Template resolution (e.g., 1920x1080)", "1920x1080")
         try:
@@ -229,7 +237,6 @@ def run_pipeline(inputs, logger):
 
         template_summary["frame_rate"] = 30
 
-        # Ask about known layers
         print()
         print("Do you know the names of any text layers in the template?")
         print("Enter comma-separated names, or press Enter to skip.")
@@ -239,11 +246,8 @@ def run_pipeline(inputs, logger):
                 name = name.strip()
                 if name:
                     template_summary["replaceable_text_layers"].append({
-                        "name": name,
-                        "index": 0,
-                        "current_text": "",
-                        "font": "",
-                        "font_size": 0
+                        "name": name, "index": 0,
+                        "current_text": "", "font": "", "font_size": 0
                     })
 
         print()
@@ -255,10 +259,8 @@ def run_pipeline(inputs, logger):
                 name = name.strip()
                 if name:
                     template_summary["replaceable_image_layers"].append({
-                        "name": name,
-                        "index": 0,
-                        "source_name": "",
-                        "source_file": "",
+                        "name": name, "index": 0,
+                        "source_name": "", "source_file": "",
                         "width": template_summary["width"],
                         "height": template_summary["height"],
                         "is_missing": False
@@ -269,7 +271,6 @@ def run_pipeline(inputs, logger):
             os.path.join(OUTPUT_DIR, "template_summary.json")
         )
 
-    # Display summary to user
     print()
     print("=" * 50)
     print("  TEMPLATE ANALYSIS RESULTS")
@@ -298,7 +299,6 @@ def run_pipeline(inputs, logger):
 
     save_json(content_plan, os.path.join(OUTPUT_DIR, "content_plan.json"))
 
-    # Display content plan to user
     print()
     print("=" * 50)
     print("  AI-GENERATED CONTENT PLAN")
@@ -330,10 +330,7 @@ def run_pipeline(inputs, logger):
     # ===================================================================
     logger.section("PHASE 3: Asset Generation")
 
-    # Generate images
     generated_images = generate_images(content_plan, logger)
-
-    # Generate voiceover
     voiceover_path = generate_voiceover(content_plan, logger)
 
     # ===================================================================
@@ -346,23 +343,9 @@ def run_pipeline(inputs, logger):
         voiceover_path, template_summary, logger
     )
 
-    save_json(
-        {
-            "jsx_script": jsx_file_path,
-            "modified_aep": modified_aep_path,
-            "images": [img["path"] for img in generated_images],
-            "voiceover": voiceover_path
-        },
-        os.path.join(OUTPUT_DIR, "fill_manifest.json")
-    )
-
     print()
-    logger.info(
-        "Ready to execute fill script in After Effects."
-    )
-    logger.info(
-        "After Effects will open, modify the template, and save."
-    )
+    logger.info("Ready to execute fill script in After Effects.")
+    logger.info("After Effects will open, modify the template, and save.")
     print()
     proceed = ask_user(
         "Execute fill script in After Effects? (yes/no)", "yes"
@@ -371,7 +354,6 @@ def run_pipeline(inputs, logger):
     if proceed.lower() not in ["yes", "y"]:
         logger.info("Skipping AE fill execution.")
         logger.info(f"You can manually run the script in AE: {jsx_file_path}")
-        logger.info(f"Modified AEP: {modified_aep_path}")
     else:
         fill_success = execute_fill_script(jsx_file_path, logger)
         if not fill_success:
@@ -379,9 +361,20 @@ def run_pipeline(inputs, logger):
                 "Fill script execution may have had issues. "
                 "Continuing to render step anyway."
             )
+        time.sleep(5)
 
-        # Give AE a moment to finish saving
-        time.sleep(3)
+    # Check the debug log from the fill script
+    debug_log_path = os.path.join(OUTPUT_DIR, "jsx_debug.log")
+    if os.path.isfile(debug_log_path):
+        logger.info("--- ExtendScript Debug Log ---")
+        try:
+            with open(debug_log_path, "r", encoding="utf-8") as f:
+                debug_content = f.read()
+            for line in debug_content.strip().split("\n"):
+                logger.info(f"  JSX: {line}")
+        except Exception:
+            pass
+        logger.info("--- End Debug Log ---")
 
     # ===================================================================
     # PHASE 5: Rendering
@@ -395,10 +388,7 @@ def run_pipeline(inputs, logger):
 
     if proceed.lower() not in ["yes", "y"]:
         logger.info("Skipping render.")
-        logger.info(
-            f"You can render manually: "
-            f'aerender -project "{modified_aep_path}"'
-        )
+        logger.info(f"You can render manually from: {modified_aep_path}")
         return True
 
     final_video = render_video(modified_aep_path, template_summary, logger)
@@ -421,21 +411,21 @@ def run_pipeline(inputs, logger):
     print(f"    Content plan:       {os.path.join(OUTPUT_DIR, 'content_plan.json')}")
 
     if generated_images:
-        print(f"    Generated images:   {IMAGES_DIR}")
         for img in generated_images:
-            print(f"      - {os.path.basename(img['path'])}")
+            print(f"    Image: {os.path.basename(img['path'])}")
 
     if voiceover_path:
-        print(f"    Voiceover:          {voiceover_path}")
+        print(f"    Voiceover: {voiceover_path}")
 
-    print(f"    Fill script:        {jsx_file_path}")
-    print(f"    Modified AEP:       {modified_aep_path}")
+    print(f"    Fill script: {jsx_file_path}")
+    print(f"    Modified AEP: {modified_aep_path}")
+    print(f"    Debug log: {debug_log_path}")
 
-    if final_video:
-        print()
-        print(f"    >>> FINAL VIDEO:    {final_video}")
+    if final_video and os.path.isfile(final_video):
         file_size_mb = os.path.getsize(final_video) / (1024 * 1024)
-        print(f"    >>> File size:      {file_size_mb:.1f} MB")
+        print()
+        print(f"    >>> FINAL VIDEO: {final_video}")
+        print(f"    >>> File size:   {file_size_mb:.2f} MB")
     else:
         print()
         print("    Video render was skipped or failed.")
@@ -444,13 +434,11 @@ def run_pipeline(inputs, logger):
     print()
     print("=" * 60)
 
-    # Save generation report
     report = {
         "pipeline_duration_seconds": round(pipeline_elapsed, 1),
         "template_file": aep_path,
         "creative_prompt": creative_prompt,
         "template_description": template_description,
-        "content_plan_file": os.path.join(OUTPUT_DIR, "content_plan.json"),
         "images_generated": len(generated_images),
         "voiceover_generated": voiceover_path is not None,
         "modified_aep_file": modified_aep_path,
@@ -466,7 +454,6 @@ def main():
     """Main entry point for MoFA Effect."""
     print_banner()
 
-    # Initialize
     ensure_directories()
     logger = Logger(LOGS_DIR)
 
@@ -475,12 +462,11 @@ def main():
     logger.info(f"Working directory: {os.getcwd()}")
     logger.info(f"Output directory: {OUTPUT_DIR}")
 
-    # Check dependencies
     deps_ok = check_dependencies(logger)
     if not deps_ok:
         print()
         print("Some dependencies are missing. Please install them:")
-        print("  pip install edge-tts imageio-ffmpeg")
+        print("  pip install requests edge-tts imageio-ffmpeg pillow")
         print()
         proceed = ask_user(
             "Continue anyway? Some features may not work. (yes/no)",
@@ -490,7 +476,6 @@ def main():
             logger.info("Exiting due to missing dependencies.")
             return
 
-    # Get user inputs
     try:
         inputs = get_user_inputs(logger)
     except KeyboardInterrupt:
@@ -498,7 +483,6 @@ def main():
         logger.info("User cancelled input. Exiting.")
         return
 
-    # Run the pipeline
     try:
         success = run_pipeline(inputs, logger)
         if success:
@@ -519,3 +503,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
