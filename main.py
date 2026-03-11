@@ -100,18 +100,18 @@ def get_user_inputs(logger):
         else:
             print("File not found. Please check the path and try again.")
 
-    # Get Gemini API key
+    # Get Groq API key
     print()
-    print("Enter your Google Gemini API key.")
-    print("Get one free at: https://aistudio.google.com/apikey")
+    print("Enter your Groq API key.")
+    print("Get one free at: https://console.groq.com/keys")
     print()
 
-    api_key = ask_user("Gemini API key")
+    api_key = ask_user("Groq API key")
     while not api_key or len(api_key) < 10:
         print("API key seems too short. Please enter a valid key.")
-        api_key = ask_user("Gemini API key")
+        api_key = ask_user("Groq API key")
 
-    logger.info("Gemini API key received.")
+    logger.info("Groq API key received.")
 
     # Get template description
     print()

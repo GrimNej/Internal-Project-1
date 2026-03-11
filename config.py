@@ -26,8 +26,18 @@ RENDER_TIMEOUT_SECONDS = 600  # max wait for rendering
 # ---------------------------------------------------------------------------
 # AI Models
 # ---------------------------------------------------------------------------
-GEMINI_MODEL = "gemini-2.0-flash"
-GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+# GEMINI_MODEL = "gemini-2.0-flash"
+# GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
+
+# POLLINATIONS_BASE_URL = "https://image.pollinations.ai/prompt"
+# POLLINATIONS_TIMEOUT = 120  # seconds per image
+
+
+
+
+# Using Groq instead of Gemini for free LLM access
+GROQ_MODEL = "llama-3.3-70b-versatile"  # Fast and good quality
+GROQ_API_BASE = "https://api.groq.com/openai/v1"
 
 POLLINATIONS_BASE_URL = "https://image.pollinations.ai/prompt"
 POLLINATIONS_TIMEOUT = 120  # seconds per image

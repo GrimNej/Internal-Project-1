@@ -1,38 +1,35 @@
 """
 MoFA Effect - AI Script Generator
-Uses Google Gemini (free API) to generate video content matched to template structure.
+Uses Groq API (Llama model, free) to generate video content matched to template structure.
 """
 
 import json
 import urllib.request
 import urllib.error
 
-from config import GEMINI_MODEL, GEMINI_API_BASE
+from config import GROQ_MODEL, GROQ_API_BASE
 
 
 def generate_content_plan(template_summary, user_prompt, api_key, logger):
     """
-    Use Gemini to generate a complete content plan for the video.
+    Use Groq (Llama) to generate a complete content plan for the video.
     The plan includes text replacements, image prompts, and voiceover script.
     """
-    logger.section("AI Content Generation (Gemini)")
+    logger.section("AI Content Generation (Groq - Llama)")
 
-    # Build the prompt for Gemini
     system_prompt = build_system_prompt(template_summary)
     user_message = build_user_message(template_summary, user_prompt)
 
-    logger.info("Sending request to Gemini API...")
-    logger.info(f"Model: {GEMINI_MODEL}")
+    logger.info("Sending request to Groq API...")
+    logger.info(f"Model: {GROQ_MODEL}")
 
-    # Make the API call
-    response_text = call_gemini(system_prompt, user_message, api_key, logger)
+    response_text = call_groq(system_prompt, user_message, api_key, logger)
 
     if not response_text:
-        logger.error("Failed to get response from Gemini.")
+        logger.error("Failed to get response from Groq.")
         return None
 
-    # Parse the response
-    content_plan = parse_gemini_response(response_text, template_summary, logger)
+    content_plan = parse_llm_response(response_text, template_summary, logger)
 
     if content_plan:
         logger.info("Content plan generated successfully.")
@@ -40,13 +37,13 @@ def generate_content_plan(template_summary, user_prompt, api_key, logger):
         logger.info(f"Image prompts: {len(content_plan.get('image_prompts', []))}")
         logger.info(f"Voiceover: {'Yes' if content_plan.get('voiceover_script') else 'No'}")
     else:
-        logger.error("Failed to parse Gemini response into content plan.")
+        logger.error("Failed to parse Groq response into content plan.")
 
     return content_plan
 
 
 def build_system_prompt(template_summary):
-    """Build the system instruction for Gemini."""
+    """Build the system instruction for Groq."""
     return (
         "You are MoFA Effect, an AI system that generates content for video templates. "
         "You receive a template structure description and a user creative brief. "
@@ -67,8 +64,7 @@ def build_user_message(template_summary, user_prompt):
     image_layers = template_summary.get("replaceable_image_layers", [])
     description = template_summary.get("description", "")
 
-    # Determine if voiceover makes sense
-    include_voiceover = duration >= 10  # Only for videos 10+ seconds
+    include_voiceover = duration >= 10
 
     text_layers_desc = ""
     if text_layers:
@@ -143,18 +139,18 @@ Generate a JSON object with this exact structure:
   }},
   "text_replacements": [
     {{
-      "layer_name": "exact layer name from template",
-      "layer_index": layer_index_number,
+      "layer_name": "exact layer name from template or generic name",
+      "layer_index": 0,
       "new_text": "the replacement text content"
     }}
   ],
   "image_prompts": [
     {{
       "layer_name": "exact layer name from template or descriptive name",
-      "layer_index": layer_index_number_or_0,
+      "layer_index": 0,
       "prompt": "detailed image generation prompt",
-      "width": image_width,
-      "height": image_height,
+      "width": {width},
+      "height": {height},
       "purpose": "logo or background or product_shot"
     }}
   ],
@@ -162,41 +158,35 @@ Generate a JSON object with this exact structure:
 }}
 
 Important rules:
-1. text_replacements must match the template text layers exactly by name and index.
-2. If no text layers exist, still provide reasonable text content with layer_index 0.
-3. Image prompts should be detailed and specific for best AI image generation.
-4. For logo images, describe a clean professional logo design.
-5. Keep all text concise and impactful. This is a video, not an article.
-6. Output ONLY the JSON object. No other text."""
+1. For a 7-second logo reveal template, generate at least 1 text layer (brand name) and 1 image (logo).
+2. Text should be short and impactful.
+3. Image prompts must be detailed for AI generation.
+4. For logos, describe a clean professional logo design matching the brand.
+5. Output ONLY the JSON object. No other text before or after."""
 
     return message
 
 
-def call_gemini(system_prompt, user_message, api_key, logger):
-    """Call the Gemini API and return the response text."""
-    url = (
-        f"{GEMINI_API_BASE}/models/{GEMINI_MODEL}:generateContent"
-        f"?key={api_key}"
-    )
+def call_groq(system_prompt, user_message, api_key, logger):
+    """Call the Groq API and return the response text."""
+    url = f"{GROQ_API_BASE}/chat/completions"
 
     payload = {
-        "contents": [
+        "model": GROQ_MODEL,
+        "messages": [
             {
-                "parts": [
-                    {"text": user_message}
-                ]
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": user_message
             }
         ],
-        "systemInstruction": {
-            "parts": [
-                {"text": system_prompt}
-            ]
-        },
-        "generationConfig": {
-            "temperature": 0.7,
-            "topP": 0.95,
-            "maxOutputTokens": 2048
-        }
+        "temperature": 0.7,
+        "max_tokens": 2048,
+        "top_p": 1,
+        "stream": False
     }
 
     data = json.dumps(payload).encode("utf-8")
@@ -205,7 +195,8 @@ def call_gemini(system_prompt, user_message, api_key, logger):
         url,
         data=data,
         headers={
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
         },
         method="POST"
     )
@@ -215,35 +206,35 @@ def call_gemini(system_prompt, user_message, api_key, logger):
             response_body = response.read().decode("utf-8")
             response_json = json.loads(response_body)
 
-            # Extract text from Gemini response
-            candidates = response_json.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if parts:
-                    text = parts[0].get("text", "")
-                    logger.info(f"Gemini response received ({len(text)} characters).")
-                    return text
+            choices = response_json.get("choices", [])
+            if choices:
+                message = choices[0].get("message", {})
+                content = message.get("content", "")
+                if content:
+                    logger.info(f"Groq response received ({len(content)} characters).")
+                    return content
 
-            logger.error("Gemini response had no candidates.")
+            logger.error("Groq response had no choices.")
             logger.error(f"Full response: {response_body[:500]}")
             return None
 
     except urllib.error.HTTPError as e:
         error_body = e.read().decode("utf-8", errors="replace")
-        logger.error(f"Gemini API HTTP error {e.code}: {error_body[:500]}")
+        logger.error(f"Groq API HTTP error {e.code}: {error_body[:500]}")
         return None
     except urllib.error.URLError as e:
-        logger.error(f"Gemini API connection error: {str(e)}")
+        logger.error(f"Groq API connection error: {str(e)}")
         return None
     except Exception as e:
-        logger.error(f"Gemini API unexpected error: {str(e)}")
+        logger.error(f"Groq API unexpected error: {str(e)}")
         return None
 
 
-def parse_gemini_response(response_text, template_summary, logger):
-    """Parse the Gemini response into a structured content plan."""
-    # Clean up the response - remove markdown code fences if present
+def parse_llm_response(response_text, template_summary, logger):
+    """Parse the LLM response into a structured content plan."""
     text = response_text.strip()
+    
+    # Remove markdown code fences if present
     if text.startswith("```json"):
         text = text[7:]
     if text.startswith("```"):
@@ -252,13 +243,12 @@ def parse_gemini_response(response_text, template_summary, logger):
         text = text[:-3]
     text = text.strip()
 
-    # Try to find JSON object in the response
-    # Sometimes Gemini adds explanation text before/after
+    # Find JSON object
     start_idx = text.find("{")
     end_idx = text.rfind("}")
 
     if start_idx == -1 or end_idx == -1:
-        logger.error("No JSON object found in Gemini response.")
+        logger.error("No JSON object found in Groq response.")
         logger.error(f"Response was: {text[:300]}")
         return None
 
@@ -266,7 +256,8 @@ def parse_gemini_response(response_text, template_summary, logger):
 
     try:
         content_plan = json.loads(json_text)
-        # Validate required fields
+        
+        # Validate and fix structure
         required_fields = ["text_replacements", "image_prompts"]
         for field in required_fields:
             if field not in content_plan:
@@ -275,15 +266,35 @@ def parse_gemini_response(response_text, template_summary, logger):
         if "voiceover_script" not in content_plan:
             content_plan["voiceover_script"] = ""
 
+        # Ensure at least one image for logo templates
+        if not content_plan["image_prompts"]:
+            brand_name = content_plan.get("brand_name", "Brand")
+            content_plan["image_prompts"] = [{
+                "layer_name": "Logo",
+                "layer_index": 0,
+                "prompt": f"professional logo design for {brand_name}, clean, modern, vector style",
+                "width": template_summary.get("width", 1920),
+                "height": template_summary.get("height", 1080),
+                "purpose": "logo"
+            }]
+
+        # Ensure at least one text for logo templates
+        if not content_plan["text_replacements"]:
+            brand_name = content_plan.get("brand_name", "Brand")
+            content_plan["text_replacements"] = [{
+                "layer_name": "Brand Name",
+                "layer_index": 0,
+                "new_text": brand_name
+            }]
+
         return content_plan
 
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON from Gemini response: {str(e)}")
+        logger.error(f"Failed to parse JSON from Groq response: {str(e)}")
         logger.error(f"JSON text was: {json_text[:300]}")
 
-        # Attempt to fix common JSON issues
+        # Try to fix common JSON issues
         try:
-            # Try fixing trailing commas
             import re
             fixed = re.sub(r',\s*}', '}', json_text)
             fixed = re.sub(r',\s*]', ']', fixed)
