@@ -1,0 +1,26 @@
+{
+  "brand_name": "MoFA",
+  "tagline": "AI Video Solutions",
+  "tone": "Innovative and Professional",
+  "color_scheme": {
+    "primary": "#3498db",
+    "secondary": "#2ecc71",
+    "accent": "#e74c3c"
+  },
+  "text_replacements": [
+    {
+      "tool_name": "Text1",
+      "new_text": "Welcome to MoFA"
+    }
+  ],
+  "image_prompts": [
+    {
+      "tool_name": "MediaIn1",
+      "prompt": "MoFA logo on a simple background",
+      "width": 1920,
+      "height": 1080,
+      "purpose": "logo"
+    }
+  ],
+  "voiceover_script": ""
+}

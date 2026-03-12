@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config import (
     ensure_directories, OUTPUT_DIR, AERENDER_PATH, LOGS_DIR
 )
-from utils import Logger, save_json, ask_user, validate_file_exists
+from comp.utils import Logger, save_json, ask_user, validate_file_exists
 from aep_parser import parse_aep_binary
 from aep_introspect import run_introspection, build_template_summary
 from ai_script_generator import generate_content_plan

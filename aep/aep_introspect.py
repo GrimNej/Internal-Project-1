@@ -10,7 +10,7 @@ import subprocess
 import time
 
 from config import AERENDER_PATH, AE_TIMEOUT_SECONDS, TEMPLATES_DIR, OUTPUT_DIR
-from utils import validate_file_exists
+from comp.utils import validate_file_exists
 
 
 # The ExtendScript that runs inside After Effects to analyze the project.
