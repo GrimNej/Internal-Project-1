@@ -1,5 +1,7 @@
 .env
 /output
 /templates
-/downloads
-/__pycache__
+comp\__pycache__
+comp\output
+.vscode
+comp\__pycache__
