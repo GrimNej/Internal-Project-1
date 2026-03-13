@@ -1,3 +1,0 @@
-file 'E:/For-PR/Prototype-MoFA-Effect/comp/output/frames/scene_001.png'
-duration 5.00
-file 'E:/For-PR/Prototype-MoFA-Effect/comp/output/frames/scene_001.png'
