@@ -1,0 +1,828 @@
+Composition {
+	CurrentTime = 117,
+	RenderRange = { 0, 149 },
+	GlobalRange = { 0, 149 },
+	CurrentID = 92,
+	HiQ = true,
+	PlaybackUpdateMode = 0,
+	Version = "DaVinci Resolve 16.2.7.010",
+	SavedOutputs = 0,
+	HeldTools = 0,
+	DisabledTools = 0,
+	LockedTools = 0,
+	AudioOffset = 0,
+	Resumable = true,
+	OutputClips = {
+	},
+	Tools = {
+		REPLACE = Loader {
+			ExtentSet = true,
+			NameSet = true,
+			CustomData = { MediaProps = { MEDIA_NUM_LAYERS = 1, MEDIA_FORMAT_TYPE = "QuickTime", MEDIA_NAME = "mixkit-woman-sitting-reading-in-pajamas-4950.mp4", MEDIA_HEIGHT = 1920, MEDIA_PATH = "C:\\Users\\rober\\Downloads\\mixkit-woman-sitting-reading-in-pajamas-4950.mp4", MEDIA_START_FRAME = 0, MEDIA_SRC_FRAME_RATE = 23.976023976024, MEDIA_MARK_OUT = 243, MEDIA_WIDTH = 1080, MEDIA_NUM_FRAMES = 244, MEDIA_MARK_IN = 0, MEDIA_PAR = 1 }, },
+			Inputs = {
+				GlobalOut = Input { Value = 243, },
+				MediaID = Input { Value = "1f455546-f419-47a0-8466-1c05f5094946", },
+				Layer = Input { Value = "", },
+				ClipTimeEnd = Input { Value = 243, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 220, 82.5 } },
+			Clips = {
+				Clip {
+					ID = "Clip1",
+					Multiframe = true,
+					Filename = "C:\\Users\\rober\\Downloads\\mixkit-woman-sitting-reading-in-pajamas-4950.mp4",
+					Length = 244,
+					LengthSetManually = true,
+					GlobalEnd = 243,
+					TrimOut = 243,
+				}
+			}
+		},
+		Overlay = Background {
+			NameSet = true,
+			Inputs = {
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				TopLeftAlpha = Input { Value = 0.591, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 275, 49.5 } },
+		},
+		LinkOne = Merge {
+			NameSet = true,
+			Inputs = {
+				Background = Input {
+					SourceOp = "REPLACE",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "Overlay",
+					Source = "Output",
+				},
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 440, 82.5 } },
+		},
+		Border = RectangleMask {
+			NameSet = true,
+			Inputs = {
+				MotionBlur = Input { Value = 1, },
+				Quality = Input { Value = 10, },
+				Filter = Input { Value = FuID { "Fast Gaussian" }, },
+				BorderWidth = Input { Value = 0.015, },
+				Solid = Input { Value = 0, },
+				CapStyle = Input { Value = 2, },
+				WritePosition = Input { Value = 0.166, },
+				WriteLength = Input {
+					SourceOp = "Rectangle1Length",
+					Source = "Value",
+				},
+				MaskWidth = Input { Value = 1080, },
+				MaskHeight = Input { Value = 1920, },
+				PixelAspect = Input { Value = { 1, 1 }, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				ClippingMode = Input { Value = FuID { "None" }, },
+				Width = Input { Value = 0.835, },
+				Height = Input { Value = 0.915, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 495, 16.5 } },
+		},
+		Rectangle1Length = BezierSpline {
+			SplineColor = { Red = 141, Green = 167, Blue = 243 },
+			NameSet = true,
+			KeyFrames = {
+				[0] = { 0, RH = { 3.33333333333333, 0 }, Flags = { Linear = true } },
+				[10] = { 1, LH = { 6.66666666666667, 1 } }
+			}
+		},
+		BorderColor = Background {
+			NameSet = true,
+			Inputs = {
+				EffectMask = Input {
+					SourceOp = "Border",
+					Source = "Mask",
+				},
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				TopLeftRed = Input { Value = 1, },
+				TopLeftGreen = Input { Value = 1, },
+				TopLeftBlue = Input { Value = 1, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 495, 49.5 } },
+		},
+		LinkTwo = Merge {
+			NameSet = true,
+			Inputs = {
+				Blend = Input {
+					SourceOp = "Merge1Blend",
+					Source = "Value",
+				},
+				Background = Input {
+					SourceOp = "LinkOne",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "BorderColor",
+					Source = "Output",
+				},
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 550, 82.5 } },
+		},
+		Merge1Blend = BezierSpline {
+			SplineColor = { Red = 205, Green = 205, Blue = 205 },
+			NameSet = true,
+			KeyFrames = {
+				[0] = { 0, RH = { 0.333333333333333, 0 }, Flags = { Linear = true } },
+				[1] = { 1, LH = { 0.666666666666667, 1 } }
+			}
+		},
+		Quote = TextPlus {
+			NameSet = true,
+			Inputs = {
+				MotionBlur = Input { Value = 1, },
+				Quality = Input { Value = 10, },
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				Center = Input { Value = { 0.5, 0.510909090909091 }, },
+				LayoutRotation = Input { Value = 1, },
+				AngleY = Input {
+					SourceOp = "Text1Y",
+					Source = "Value",
+				},
+				StyledText = Input { Value = "\"Lorem ipsum dolor \nsit amet, consectetur \nadipiscing elit. \nFusce eget sem lacinia, \npellentesque nisi non, \ngravida arcu.\"", },
+				Font = Input { Value = "Bebas Neue", },
+				Style = Input { Value = "Book", },
+				Size = Input {
+					SourceOp = "Text1Size",
+					Source = "Value",
+				},
+				VerticalJustificationNew = Input { Value = 3, },
+				HorizontalJustificationNew = Input { Value = 3, },
+				ManualFontKerningPlacement = Input {
+					Value = StyledText {
+						Array = {
+						},
+						Value = ""
+					},
+				},
+			},
+			ViewInfo = OperatorInfo { Pos = { 660, 49.5 } },
+		},
+		Text1Y = BezierSpline {
+			SplineColor = { Red = 0, Green = 255, Blue = 0 },
+			NameSet = true,
+			KeyFrames = {
+				[20] = { 0 }
+			}
+		},
+		Text1Size = BezierSpline {
+			SplineColor = { Red = 225, Green = 0, Blue = 225 },
+			NameSet = true,
+			KeyFrames = {
+				[0] = { 0, RH = { 5, 0 }, Flags = { Linear = true } },
+				[15] = { 0.1085, LH = { 10, 0.1085 }, RH = { 17, 0.1085 } },
+				[21] = { 0.1117, LH = { 19, 0.1117 } }
+			}
+		},
+		LinkThree = Merge {
+			NameSet = true,
+			Inputs = {
+				Blend = Input {
+					SourceOp = "Merge2Blend",
+					Source = "Value",
+				},
+				Background = Input {
+					SourceOp = "LinkTwo",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "Quote",
+					Source = "Output",
+				},
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 660, 82.5 } },
+		},
+		Merge2Blend = BezierSpline {
+			SplineColor = { Red = 205, Green = 205, Blue = 205 },
+			NameSet = true,
+			KeyFrames = {
+				[4] = { 0, RH = { 9.33333333333333, 0 }, Flags = { Linear = true } },
+				[20] = { 1, LH = { 14.6666666666667, 1 } }
+			}
+		},
+		Tagline = TextPlus {
+			NameSet = true,
+			Inputs = {
+				MotionBlur = Input { Value = 1, },
+				Quality = Input { Value = 10, },
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				Center = Input { Value = { 0.485014026280821, 0.338722358722359 }, },
+				StyledText = Input { Value = "- Mixkit", },
+				Font = Input { Value = "Just Another Hand", },
+				Style = Input { Value = "Regular", },
+				Size = Input {
+					SourceOp = "Text2Size",
+					Source = "Value",
+				},
+				VerticalJustificationNew = Input { Value = 3, },
+				HorizontalJustificationNew = Input { Value = 3, },
+				ManualFontKerningPlacement = Input {
+					Value = StyledText {
+						Array = {
+						},
+						Value = ""
+					},
+				},
+			},
+			ViewInfo = OperatorInfo { Pos = { 770, 49.5 } },
+		},
+		Text2Size = BezierSpline {
+			SplineColor = { Red = 225, Green = 0, Blue = 225 },
+			NameSet = true,
+			KeyFrames = {
+				[15] = { 0, RH = { 16.6666666666667, 0 }, Flags = { Linear = true } },
+				[20] = { 0.08, LH = { 18.3333333333333, 0.08 } }
+			}
+		},
+		LinkFour = Merge {
+			NameSet = true,
+			Inputs = {
+				Background = Input {
+					SourceOp = "LinkThree",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "Tagline",
+					Source = "Output",
+				},
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 770, 82.5 } },
+		},
+		Button = RectangleMask {
+			NameSet = true,
+			Inputs = {
+				MotionBlur = Input { Value = 1, },
+				Quality = Input { Value = 10, },
+				Filter = Input { Value = FuID { "Fast Gaussian" }, },
+				BorderWidth = Input { Value = 0.0062, },
+				Solid = Input { Value = 0, },
+				MaskWidth = Input { Value = 1080, },
+				MaskHeight = Input { Value = 1920, },
+				PixelAspect = Input { Value = { 1, 1 }, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				ClippingMode = Input { Value = FuID { "None" }, },
+				Center = Input { Value = { 0.5, 0.150909090909091 }, },
+				Width = Input {
+					SourceOp = "Rectangle2Width",
+					Source = "Value",
+				},
+				Height = Input { Value = 0.079, },
+				CornerRadius = Input { Value = 1, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 880, 16.5 } },
+		},
+		Rectangle2Width = BezierSpline {
+			SplineColor = { Red = 225, Green = 255, Blue = 0 },
+			NameSet = true,
+			KeyFrames = {
+				[15] = { 0, RH = { 17, 0 }, Flags = { Linear = true } },
+				[21] = { 0.378, LH = { 19, 0.378 } }
+			}
+		},
+		ButtonColor = Background {
+			NameSet = true,
+			Inputs = {
+				EffectMask = Input {
+					SourceOp = "Button",
+					Source = "Mask",
+				},
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				TopLeftRed = Input { Value = 1, },
+				TopLeftGreen = Input { Value = 1, },
+				TopLeftBlue = Input { Value = 1, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 880, 49.5 } },
+		},
+		LinkFive = Merge {
+			NameSet = true,
+			Inputs = {
+				Background = Input {
+					SourceOp = "LinkFour",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "ButtonColor",
+					Source = "Output",
+				},
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 880, 82.5 } },
+		},
+		ButtonText = TextPlus {
+			NameSet = true,
+			Inputs = {
+				MotionBlur = Input { Value = 1, },
+				Quality = Input { Value = 10, },
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				Center = Input { Value = { 0.5, 0.151962746733389 }, },
+				StyledText = Input { Value = "READ MORE", },
+				Font = Input { Value = "Bebas Neue", },
+				Style = Input { Value = "Book", },
+				Size = Input {
+					SourceOp = "Text3Size",
+					Source = "Value",
+				},
+				VerticalJustificationNew = Input { Value = 3, },
+				HorizontalJustificationNew = Input { Value = 3, },
+				ManualFontKerningPlacement = Input {
+					Value = StyledText {
+						Array = {
+						},
+						Value = ""
+					},
+				},
+			},
+			ViewInfo = OperatorInfo { Pos = { 990, 49.5 } },
+		},
+		Text3Size = BezierSpline {
+			SplineColor = { Red = 225, Green = 0, Blue = 225 },
+			NameSet = true,
+			KeyFrames = {
+				[17] = { 0, RH = { 17.3333333333333, 0 }, Flags = { Linear = true } },
+				[18] = { 0.0494, LH = { 17.6666666666667, 0.0494 }, RH = { 18.3333333333333, 0.0494 } },
+				[19] = { 0.0632, LH = { 18.6666666666667, 0.0632 }, RH = { 19.3333333333333, 0.0632 } },
+				[20] = { 0.0814, LH = { 19.6666666666667, 0.0814 } }
+			}
+		},
+		LinkSix = Merge {
+			NameSet = true,
+			Inputs = {
+				Background = Input {
+					SourceOp = "LinkFive",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "ButtonText",
+					Source = "Output",
+				},
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 990, 82.5 } },
+		},
+		Ribbon = RectangleMask {
+			NameSet = true,
+			Inputs = {
+				MotionBlur = Input { Value = 1, },
+				Quality = Input { Value = 10, },
+				Filter = Input { Value = FuID { "Fast Gaussian" }, },
+				MaskWidth = Input { Value = 1080, },
+				MaskHeight = Input { Value = 1920, },
+				PixelAspect = Input { Value = { 1, 1 }, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				ClippingMode = Input { Value = FuID { "None" }, },
+				Center = Input { Value = { 0.832985853439656, 0.951643119005632 }, },
+				Width = Input {
+					SourceOp = "Rectangle3Width",
+					Source = "Value",
+				},
+				Height = Input {
+					SourceOp = "Rectangle3Height",
+					Source = "Value",
+				},
+			},
+			ViewInfo = OperatorInfo { Pos = { 1100, -16.5 } },
+		},
+		Rectangle3Width = BezierSpline {
+			SplineColor = { Red = 225, Green = 255, Blue = 0 },
+			NameSet = true,
+			KeyFrames = {
+				[13] = { 1, RH = { 14, 1 }, Flags = { Linear = true } },
+				[16] = { 1, LH = { 15, 1 } }
+			}
+		},
+		Rectangle3Height = BezierSpline {
+			SplineColor = { Red = 0, Green = 255, Blue = 255 },
+			NameSet = true,
+			KeyFrames = {
+				[13] = { 0, RH = { 14, 0 }, Flags = { Linear = true } },
+				[16] = { 0.047, LH = { 15, 0.047 } }
+			}
+		},
+		RibbonColor = Background {
+			NameSet = true,
+			Inputs = {
+				EffectMask = Input {
+					SourceOp = "Ribbon",
+					Source = "Mask",
+				},
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				Type = Input { Value = FuID { "Gradient" }, },
+				TopLeftRed = Input { Value = 0.693, },
+				BottomLeftRed = Input { Value = 0.535, },
+				BottomLeftGreen = Input { Value = 0.03531, },
+				BottomLeftBlue = Input { Value = 0.03531, },
+				Gradient = Input {
+					Value = Gradient {
+						Colors = {
+							[0] = { 1, 0, 0, 1 },
+							[1] = { 0.504, 0.051408, 0.051408, 1 }
+						}
+					},
+				},
+			},
+			ViewInfo = OperatorInfo { Pos = { 1100, 16.5 } },
+		},
+		Shadow = ofx.com.blackmagicdesign.resolvefx.dropshadow {
+			NameSet = true,
+			Inputs = {
+				Source = Input {
+					SourceOp = "RibbonColor",
+					Source = "Output",
+				},
+				shadowStrength = Input { Value = 0.5, },
+				shadowAngle = Input { Value = 37.5, },
+				ShadowDistance = Input { Value = 0.0500000007450581, },
+				shadowBlur = Input { Value = 0.550000011920929, },
+				shadowColorRed = Input { Value = 0, },
+				shadowColorGreen = Input { Value = 0, },
+				shadowColorBlue = Input { Value = 0, },
+				blendGroup = Input { Value = 1, },
+				blend = Input { Value = 0, },
+				ignoreContentShape = Input { Value = 0, },
+				legacyIsProcessRGBOnly = Input { Value = 0, },
+				resolvefxVersion = Input { Value = "1.0", },
+			},
+			ViewInfo = OperatorInfo { Pos = { 1100, 49.5 } },
+		},
+		LinkSeven = Merge {
+			NameSet = true,
+			Inputs = {
+				Background = Input {
+					SourceOp = "LinkSix",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "Shadow",
+					Source = "Output",
+				},
+				Center = Input { Value = { 0.626923076923077, 0.538918918918919 }, },
+				Angle = Input { Value = 44.3, },
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 1100, 82.5 } },
+		},
+		Title = TextPlus {
+			CtrlWZoom = false,
+			NameSet = true,
+			Inputs = {
+				MotionBlur = Input { Value = 1, },
+				Quality = Input { Value = 10, },
+				GlobalOut = Input { Value = 149, },
+				Width = Input { Value = 1080, },
+				Height = Input { Value = 1920, },
+				UseFrameFormatSettings = Input { Value = 1, },
+				["Gamut.SLogVersion"] = Input { Value = FuID { "SLog2" }, },
+				Center = Input { Value = { 0.485014026280821, 0.753857493857494 }, },
+				StyledText = Input { Value = "Storytime", },
+				Font = Input { Value = "Just Another Hand", },
+				Style = Input { Value = "Regular", },
+				Size = Input {
+					SourceOp = "Text2_1Size",
+					Source = "Value",
+				},
+				VerticalJustificationNew = Input { Value = 3, },
+				HorizontalJustificationNew = Input { Value = 3, },
+				Underline = Input { Value = 1, },
+				ManualFontKerningPlacement = Input {
+					Value = StyledText {
+						Array = {
+						},
+						Value = ""
+					},
+				},
+			},
+			ViewInfo = OperatorInfo { Pos = { 1210, 49.5 } },
+		},
+		Text2_1Size = BezierSpline {
+			SplineColor = { Red = 225, Green = 0, Blue = 225 },
+			NameSet = true,
+			KeyFrames = {
+				[15] = { 0, RH = { 16.6666666666667, 0 }, Flags = { Linear = true } },
+				[20] = { 0.1631, LH = { 18.3333333333333, 0.1631 } }
+			}
+		},
+		LinkEight = Merge {
+			NameSet = true,
+			Inputs = {
+				Background = Input {
+					SourceOp = "LinkSeven",
+					Source = "Output",
+				},
+				Foreground = Input {
+					SourceOp = "Title",
+					Source = "Output",
+				},
+				PerformDepthMerge = Input { Value = 0, },
+			},
+			ViewInfo = OperatorInfo { Pos = { 1210, 82.5 } },
+		},
+		FinishedMedia = Saver {
+			NameSet = true,
+			Inputs = {
+				Index = Input { Value = "0", },
+				Input = Input {
+					SourceOp = "LinkEight",
+					Source = "Output",
+				},
+			},
+			ViewInfo = OperatorInfo { Pos = { 1320, 82.5 } },
+		},
+		Note1 = Note {
+			Inputs = {
+				Comments = Input { Value = "Drag your own image over the \"REPLACE\" node to change the placeholder.", }
+			},
+			ViewInfo = StickyNoteInfo {
+				Pos = { 211.206, -49.5 },
+				Flags = {
+					Expanded = true
+				},
+				Size = { 337.688, 74.7647 }
+			},
+		}
+	},
+	Frames = {
+		{
+			FrameTypeID = "ChildFrame",
+			Mode = 3,
+			LayoutPreset = 0,
+			Left = 0,
+			Top = 0,
+			Width = 1920,
+			Height = 922,
+			ZoneInfo = { AuxRight = { Expanded = true }, ["!Left"] = {
+				}, AuxLeft = { Expanded = true }, Right = { Expanded = true, }, Left = { Expanded = false, }, ["!Right"] = {
+				} },
+			ViewInfo = { Viewer1 = { Show = true, RatioY = 0.01, RatioX = 1.0046511627907, }, InnerLeft = { PixelX = 420, RatioY = 100, }, MainSplit = { RatioX = 100, RatioY = 0.599539700805524, }, CenterSplit = { RatioX = 1, RatioY = 100, }, Viewer2 = { Show = true, RatioY = 0.01, RatioX = 0.995348837209302, }, Comments = { Show = false }, Time = { Show = true, RatioX = 100, PixelY = 83, }, InnerColumns = { RatioX = 100, RatioY = 1.40046029919448, }, Keyframes = { Show = false, RatioY = 100, RatioX = 1, }, LayoutStrip = { Show = true, RatioX = 100, }, Inspector = { Show = true, RatioY = 1, RatioX = 100, }, InnerRight = { PixelX = 420, RatioY = 100, }, MediaPool = { Show = true, RatioX = 1, RatioY = 50, MRU = 2, Adjust = false, }, OuterColumns = { RatioX = 100, RatioY = 1, }, Effects = { Show = false, RatioX = 1, RatioY = 50, MRU = 0, Adjust = true, }, Clips = { Show = false, Adjust = true, MRU = 0, RatioX = 100, }, Metadata = { Show = false, RatioY = 1, RatioX = 100, }, OuterLeft = { PixelX = 420, RatioY = 100, }, ViewerSplit = { RatioX = 100, RatioY = 1, }, Nodes = { Show = true, RatioY = 100, RatioX = 1, }, OuterRight = { PixelX = 420, RatioY = 100, }, ActionStrip = { Show = true, RatioX = 100, }, Spline = { Show = false, RatioX = 1, RatioY = 100, MRU = 0, Adjust = true, } },
+			Views = ordered() {
+				MediaPool = "MediaPoolView",
+				Effects = MultiView {
+					Active = "EffectView",
+					ViewList = ordered() {
+						EffectView = "EffectView"
+					},
+				},
+				Nodes = MultiView {
+					Active = "FlowView",
+					ViewList = ordered() {
+						FlowView = "FlowView"
+					},
+					Names = {
+						FlowView = "FlowView"
+					},
+					FlowView = FlowView {
+						Flags = {
+							AutoHideNavigator = true,
+							GridSnap = true,
+							AutoSnap = true,
+							RemoveRouters = true
+						},
+						NavigatorSize = { 200, 140 },
+						Direction = "Horizontal",
+						PipeStyle = "Direct",
+						RootScale = 0.682251,
+						RootOffset = { -151.406, 62.6151 }
+					}
+				},
+				Keyframes = MultiView {
+					Active = "TimelineView",
+					ViewList = ordered() {
+						TimelineView = "TimelineView"
+					},
+					Names = {
+						TimelineView = "TimelineView"
+					},
+					TimelineView = TimelineView {
+						TreeControlState = {
+						},
+						DisplayMode = "All Tools",
+						ShowCurrentTimeTools = false,
+						Filter = "Show All",
+						ShowSelectedTools = false,
+						ShowAnimatedToolsOnly = false,
+						ShowEditBoxes = false,
+						KeyFrameView = {
+							Position = { Left = 232, Bottom = 293 },
+							ScaleX = 0.370844444444445,
+							OffsetX = -74.5397333333333,
+							OffsetY = 0,
+							AutoScaling = "scroll",
+							AutoSnapTo = "frame",
+							AutoSnapToGuidelines = true,
+							GuidelinesGrabEnabled = true,
+							GuidelinesSnapTo = "none"
+						},
+						Spreadsheet = { LeftPos = 232, Visible = false }
+					}
+				},
+				Spline = MultiView {
+					Active = "SplineView",
+					ViewList = ordered() {
+						SplineView = "SplineEditorView"
+					},
+					Names = {
+						SplineView = "SplineView"
+					},
+					SplineView = SplineEditorView {
+						LeftPos = 264,
+						ScaleX = 0.0405919661733615,
+						ScaleY = 0.00631578947368421,
+						OffsetX = -1.5830866807611,
+						OffsetY = -2.61473684210526,
+						AutoScaling = "scroll",
+						AutoSnapTo = "frame",
+						AutoSnapToGuidelines = true,
+						GuidelinesSnapTo = "frame",
+						ShowKeyMarkers = false,
+						IndependentHandles = false,
+						ShowNonSplineModifiers = false,
+						GuidelinesGrabEnabled = true,
+						ShowOneToolOnly = false,
+						ShowSelectedTools = false,
+						ShowAllInputs = false,
+						Filter = "Show All"
+					}
+				},
+				Inspector = MultiView {
+					Active = "Tools",
+					ViewList = ordered() {
+						Tools = "ControlView",
+						Modifiers = "ModifierView"
+					},
+				},
+				Viewer1 = MultiView {
+					Active = "LeftView",
+					ViewList = ordered() {
+						LeftView = "PreviewContainer"
+					},
+					Names = {
+						LeftView = "LeftView"
+					},
+				},
+				Viewer2 = MultiView {
+					Active = "RightView",
+					ViewList = ordered() {
+						RightView = "PreviewContainer"
+					},
+					Names = {
+						RightView = "RightView"
+					},
+				},
+				Time = "TimeView",
+				ActionStrip = "ActionStripView",
+				LayoutStrip = "LayoutStripView",
+				Clips = "ClipsView",
+				Metadata = "MetadataView"
+			},
+			Layout = {
+				{ ID = "LayoutStrip", FixedY = 36, Resolve = false, Flat = true },
+				{
+					{
+						{ ID = "MediaPool", Fusion = false, RatioX = 1 },
+						{ ID = "Effects", RatioX = 1 },
+						Zone = "Left",
+						Rows = 2,
+						PaneID = "OuterLeft",
+						PixelX = 420
+					},
+					{
+						{
+							{
+								{ ID = "MediaPool", Fusion = false, RatioX = 1 },
+								{ ID = "Effects", RatioX = 1 },
+								PaneID = "InnerLeft",
+								MaxViews = 1,
+								PixelX = 420,
+								Rows = 2,
+								Zone = "!Left"
+							},
+							{
+								{
+									{ ID = "Viewer1", RatioY = 0.01, RatioX = 1 },
+									{ ID = "Viewer2", RatioX = 1 },
+									RatioY = 1,
+									Columns = 2,
+									PaneID = "ViewerSplit"
+								},
+								{ ID = "Time", FixedY = 83, Flat = true },
+								RatioX = 1,
+								Rows = 2
+							},
+							{
+								{ ID = "Inspector", RatioY = 1 },
+								{ ID = "Metadata", RatioY = 1, Fusion = false },
+								PaneID = "InnerRight",
+								MaxViews = 1,
+								PixelX = 420,
+								Rows = 2,
+								Zone = "!Right"
+							},
+							RatioY = 1,
+							Columns = 3,
+							PaneID = "InnerColumns"
+						},
+						{ ID = "ActionStrip", FixedY = 50, Flat = true },
+						{
+							{ ID = "Nodes", RatioX = 1 },
+							{ ID = "Spline", RatioX = 1 },
+							{ ID = "Keyframes", RatioX = 1 },
+							RatioY = 1,
+							Columns = 3,
+							PaneID = "MainSplit"
+						},
+						{ Fusion = false, ID = "Clips", LARGE_FixedY = 160, MEDIUM_FixedY = 138, SMALL_FixedY = 110 },
+						RatioX = 1,
+						Rows = 4,
+						PaneID = "CenterSplit"
+					},
+					{
+						{ ID = "Inspector", RatioY = 1 },
+						{ ID = "Metadata", RatioY = 1, Fusion = false },
+						Zone = "Right",
+						Rows = 2,
+						PaneID = "OuterRight",
+						PixelX = 420
+					},
+					RatioY = 1,
+					Columns = 3,
+					PaneID = "OuterColumns"
+				},
+				RatioX = 1,
+				Rows = 2,
+				RatioY = 1
+			}
+		}
+	},
+	Prefs = {
+		Comp = {
+			Interactive = {
+				Proxy = {
+					Scale = 1,
+				},
+			},
+			Views = {
+				RightView = {
+					Viewer = {
+					},
+					Guides = { Show = true, },
+				},
+				LeftView = {
+				},
+				View1 = {
+				},
+			},
+			FrameFormat = {
+				Width = 1080,
+				Height = 1920,
+				Rate = 29.97002997003,
+				GuideRatio = 1.77777777777778,
+				DepthFull = 3,
+				DepthPreview = 3,
+				DepthInteractive = 3,
+			},
+			LastFile = "C:\\Users\\rober\\Documents\\Envato\\Mixkit Graphics\\",
+			Unsorted = {
+				GlobalEnd = 149
+			},
+			Paths = {
+			},
+		}
+	},
+}
