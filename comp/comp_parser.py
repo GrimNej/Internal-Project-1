@@ -1,226 +1,184 @@
 """
-MoFA Effect v2 - Fusion .comp Parser
-Handles the real .comp structure:
-  - Text values live in BezierSpline keyframes (NamedSpline pattern),
-    NOT directly in the TextPlus tool block.
-  - Image filenames live inside Clips { Clip { Filename = "..." } }
-    blocks, NOT in Inputs.
-  - Background colors are also driven by BezierSplines.
+MoFA Effect v2 - Universal Fusion .comp Parser
+
+Handles every known .comp input format:
+  Plain:    StyledText = Input { Value = "hello", },
+  Bracket:  ["StyledText"] = Input { Value = "hello" },
+  SourceOp: StyledText = Input { SourceOp = "Text1StyledText", Source = "Value" },
+  Spline:   Text1StyledText = BezierSpline { KeyFrames { ... Value = Text { Value = "hello" } } }
+  Clips:    Clips { Clip { Filename = "/path/to/file.png" } }
+
+Detects: Text content, fonts, text colors, image/video paths, background colors.
+Works with all Fusion versions (standalone 5-9, Resolve 12-19+).
 """
 
 import os
 import re
 
 
-def parse_comp_file(filepath, logger):
-    result = {
-        "valid": False,
-        "file_path": filepath,
-        "file_size_kb": 0,
-        "render_range": [0, 100],
-        "fps": 30,
-        "width": 1920,
-        "height": 1080,
-        "duration_frames": 100,
-        "duration_seconds": 3.33,
-        "raw_content": "",
-        "changeable_elements": [],
-        "all_fonts_used": [],
-        # Resolution for AI helpers
-        "resolution": {"width": 1920, "height": 1080},
-        # Flat lists used by ai_script_generator
-        "text_tools": [],
-        "loader_tools": [],
-    }
+# ======================================================================
+# Constants
+# ======================================================================
 
-    if not os.path.isfile(filepath):
-        logger.error(f"File not found: {filepath}")
-        return result
+TEXT_TOOL_TYPES = {"TextPlus", "Text3D"}
 
-    result["file_size_kb"] = round(os.path.getsize(filepath) / 1024, 2)
-    logger.info(f"File: {filepath}")
-    logger.info(f"Size: {result['file_size_kb']} KB")
+SKIP_NAMES = {
+    "Input", "Value", "Source", "SourceOp", "Clip", "Clips",
+    "KeyFrames", "Flags", "RH", "LH", "CustomData", "Comments",
+    "UserControls", "CtrlWZoom", "ViewInfo", "InstanceInput",
+    "NamedInput", "Array", "Output", "Tools", "Transitions",
+}
 
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            content = f.read()
-    except UnicodeDecodeError:
-        try:
-            with open(filepath, "r", encoding="latin-1") as f:
-                content = f.read()
-        except Exception as e:
-            logger.error(f"Cannot read file: {e}")
-            return result
-
-    result["raw_content"] = content
-
-    if "Composition" not in content and "Tools" not in content:
-        logger.error("File does not look like a Fusion .comp file.")
-        return result
-
-    result["valid"] = True
-    logger.info("Valid Fusion .comp file detected.")
-
-    start, end = extract_render_range(content)
-    result["render_range"] = [start, end]
-    result["duration_frames"] = end - start + 1
-    result["fps"] = extract_fps(content)
-    result["duration_seconds"] = round(result["duration_frames"] / result["fps"], 2)
-
-    w, h = extract_resolution(content)
-    result["width"] = w
-    result["height"] = h
-    result["resolution"] = {"width": w, "height": h}
-
-    logger.info(f"Range: {start}-{end} ({result['duration_frames']} frames)")
-    logger.info(f"FPS: {result['fps']}")
-    logger.info(f"Duration: {result['duration_seconds']}s")
-    logger.info(f"Resolution: {w}x{h}")
-
-    elements = []
-    fonts_used = set()
-
-    # ------------------------------------------------------------------
-    # 1. Named BezierSplines that drive TextPlus tools
-    #    Pattern: <ToolName>StyledText = BezierSpline { ... KeyFrames { ... Value = Text { Value = "..." } ... } }
-    #    We find all such splines, collect their unique non-empty text
-    #    values, and expose them as a single multi-value text element.
-    # ------------------------------------------------------------------
-    text_spline_tools = find_text_splines(content, logger)
-    for tool in text_spline_tools:
-        elements.append(tool)
-
-    # Also find inline StyledText (non-animated, directly in TextPlus)
-    inline_text_tools = find_inline_text_tools(content, text_spline_tools, logger)
-    for tool in inline_text_tools:
-        elements.append(tool)
-
-    # Populate flat text_tools list for ai_script_generator compatibility
-    for e in elements:
-        if e["type"] == "text":
-            result["text_tools"].append({
-                "name": e["tool_name"],
-                "properties": {
-                    "styled_text": e["current_values"][0] if e.get("current_values") else e.get("current_value", "")
-                }
-            })
-
-    # ------------------------------------------------------------------
-    # 2. Loader / MediaIn tools (image/video slots)
-    #    Filename is inside Clips { Clip { Filename = "..." } }
-    # ------------------------------------------------------------------
-    loader_tools = find_loader_tools(content, logger)
-    for tool in loader_tools:
-        elements.append(tool)
-        result["loader_tools"].append({
-            "name": tool["tool_name"],
-            "properties": {"filename": tool["current_value"]}
-        })
-
-    # ------------------------------------------------------------------
-    # 3. Background color tools
-    #    Colors are driven by BezierSplines; we read their first keyframe value.
-    # ------------------------------------------------------------------
-    bg_tools = find_background_tools(content, logger)
-    for tool in bg_tools:
-        elements.append(tool)
-
-    # 4. Fonts from Text splines
-    font_splines = find_font_splines(content, logger)
-    for font in font_splines:
-        fonts_used.add(font)
-
-    for i, elem in enumerate(elements):
-        elem["index"] = i + 1
-
-    result["changeable_elements"] = elements
-    result["all_fonts_used"] = sorted(fonts_used)
-
-    logger.info(f"Changeable element slots found: {len(elements)}")
-    logger.info(f"  Text slots: {sum(1 for e in elements if e['type'] == 'text')}")
-    logger.info(f"  Image/Video slots: {sum(1 for e in elements if e['type'] == 'image')}")
-    logger.info(f"  Color slots: {sum(1 for e in elements if e['type'] == 'color')}")
-    logger.info(f"Fonts used: {len(fonts_used)}")
-
-    return result
+SKIP_TYPES = {
+    "BezierSpline", "FlowView", "MultiView", "SplineEditorView",
+    "TimelineView", "OperatorInfo", "Polyline", "Point", "FuID",
+    "Input", "ordered", "StyledText",
+}
 
 
 # ======================================================================
-# Render range / FPS / resolution helpers
+# Universal Input Helpers
 # ======================================================================
 
-def extract_render_range(content):
-    m = re.search(r'RenderRange\s*=\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}', content)
-    if m:
-        return int(m.group(1)), int(m.group(2))
-    m = re.search(r'GlobalRange\s*=\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}', content)
-    if m:
-        return int(m.group(1)), int(m.group(2))
-    return 0, 100
+def extract_block(content, start_pos):
+    """Extract content inside { } starting just after the opening brace."""
+    depth = 1
+    i = start_pos
+    n = len(content)
+    while i < n and depth > 0:
+        if content[i] == '{':
+            depth += 1
+        elif content[i] == '}':
+            depth -= 1
+        i += 1
+    return content[start_pos:i - 1]
 
 
-def extract_fps(content):
-    for pat in [r'FrameRate\s*=\s*(\d+)', r'FPS\s*=\s*(\d+)']:
-        m = re.search(pat, content)
+def find_inputs_block(tool_block):
+    """Find and extract the Inputs = { ... } section from a tool block."""
+    m = re.search(r'\bInputs\s*=\s*\{', tool_block)
+    if not m:
+        return tool_block  # fallback: search whole block
+    return extract_block(tool_block, m.end())
+
+
+def get_input_string(block, name):
+    """
+    Get string value of a named Input. Handles all formats:
+      Name = Input { Value = "str" }
+      ["Name"] = Input { Value = "str" }
+    Returns string or None.
+    """
+    patterns = [
+        re.compile(rf'\b{re.escape(name)}\s*=\s*Input\s*\{{\s*Value\s*=\s*"([^"]*)"'),
+        re.compile(rf'\["{re.escape(name)}"\]\s*=\s*Input\s*\{{\s*Value\s*=\s*"([^"]*)"'),
+    ]
+    for pat in patterns:
+        m = pat.search(block)
         if m:
-            return int(m.group(1))
-    return 30
+            return m.group(1)
+    return None
 
 
-def extract_resolution(content):
-    w, h = 1920, 1080
-    # Prefer the first Width/Height that looks like resolution (not a tool-local one)
-    wm = re.search(r'\bWidth\s*=\s*Input\s*\{\s*Value\s*=\s*(\d+)', content)
-    hm = re.search(r'\bHeight\s*=\s*Input\s*\{\s*Value\s*=\s*(\d+)', content)
-    if wm:
-        w = int(wm.group(1))
-    if hm:
-        h = int(hm.group(1))
-    return w, h
+def get_input_number(block, name):
+    """
+    Get numeric value of a named Input. Handles all formats.
+    Returns float or None.
+    """
+    patterns = [
+        re.compile(rf'\b{re.escape(name)}\s*=\s*Input\s*\{{\s*Value\s*=\s*([\d.eE+-]+)'),
+        re.compile(rf'\["{re.escape(name)}"\]\s*=\s*Input\s*\{{\s*Value\s*=\s*([\d.eE+-]+)'),
+    ]
+    for pat in patterns:
+        m = pat.search(block)
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                continue
+    return None
+
+
+def get_input_sourceop(block, name):
+    """
+    Get SourceOp name of a named Input (meaning it is animated via a spline).
+    Returns spline name string or None.
+    """
+    patterns = [
+        re.compile(rf'\b{re.escape(name)}\s*=\s*Input\s*\{{\s*SourceOp\s*=\s*"(\w+)"'),
+        re.compile(rf'\["{re.escape(name)}"\]\s*=\s*Input\s*\{{\s*SourceOp\s*=\s*"(\w+)"'),
+    ]
+    for pat in patterns:
+        m = pat.search(block)
+        if m:
+            return m.group(1)
+    return None
+
+
+def has_input(block, name):
+    """Check if a named Input exists in the block at all."""
+    patterns = [
+        re.compile(rf'\b{re.escape(name)}\s*=\s*Input\s*\{{'),
+        re.compile(rf'\["{re.escape(name)}"\]\s*=\s*Input\s*\{{'),
+    ]
+    return any(p.search(block) for p in patterns)
 
 
 # ======================================================================
-# Text detection — BezierSpline keyframe pattern
+# Tool Discovery
+# ======================================================================
+
+def find_all_tools(content):
+    """
+    Find all tool definitions in the .comp file.
+    Returns list of (name, type, block, position).
+    """
+    tools = []
+    pattern = re.compile(r'(\w+)\s*=\s*(\w+)\s*\{', re.MULTILINE)
+
+    for m in pattern.finditer(content):
+        name = m.group(1)
+        tool_type = m.group(2)
+
+        if name in SKIP_NAMES or tool_type in SKIP_TYPES:
+            continue
+
+        block = extract_block(content, m.end())
+
+        # A real tool has Inputs, ViewInfo, or NameSet
+        if not any(kw in block for kw in ("Inputs", "ViewInfo", "NameSet")):
+            continue
+
+        tools.append((name, tool_type, block, m.start()))
+
+    return tools
+
+
+# ======================================================================
+# Text Element Detection
 # ======================================================================
 
 def find_text_splines(content, logger):
     """
-    Find all  <ToolBaseName>StyledText = BezierSpline { ... }  blocks.
-
-    The TextPlus tool has its StyledText driven by a named spline, e.g.:
-        Text1StyledText = BezierSpline {
-            KeyFrames = {
-                [4.98] = { ..., Value = Text { Value = "GET" } },
-                [11.9] = { ..., Value = Text { Value = "A NEW" } },
-                ...
-            }
-        }
-
-    We collect all unique non-empty text values across all keyframes.
-    The modifier will replace ALL keyframe values with the user's new texts.
+    Find all <ToolName>StyledText = BezierSpline { ... } blocks.
+    These contain animated text across keyframes.
     """
     elements = []
-    # Match the spline block
     spline_pattern = re.compile(
         r'(\w+)StyledText\s*=\s*BezierSpline\s*\{', re.MULTILINE
     )
 
     for match in spline_pattern.finditer(content):
-        base_name = match.group(1)           # e.g. "Text1"
+        base_name = match.group(1)
         spline_name = f"{base_name}StyledText"
-        tool_name = base_name                 # logical name shown to user
 
-        # Extract the full spline block (find matching closing brace)
-        block_start = match.end()
-        block = extract_block(content, block_start)
+        block = extract_block(content, match.end())
 
-        # Find all  Value = Text { Value = "..." }  entries
         text_values = re.findall(
             r'Value\s*=\s*Text\s*\{\s*Value\s*=\s*"([^"]*)"\s*\}',
             block
         )
 
-        # Deduplicate while preserving order, skip empty
         seen = set()
         unique_vals = []
         for v in text_values:
@@ -237,13 +195,13 @@ def find_text_splines(content, logger):
 
         elements.append({
             "type": "text",
-            "tool_name": tool_name,
+            "tool_name": base_name,
             "spline_name": spline_name,
             "source": "spline",
-            "current_values": unique_vals,       # list of distinct text values
+            "current_values": unique_vals,
             "current_value": " / ".join(display),
-            "new_value": None,                   # user will fill this in
-            "new_values": None,                  # optional: list matching current_values
+            "new_value": None,
+            "new_values": None,
             "keyframe_count": len(text_values),
             "position": match.start(),
         })
@@ -251,40 +209,51 @@ def find_text_splines(content, logger):
     return elements
 
 
-def find_inline_text_tools(content, spline_tools, logger):
+def find_inline_text_tools(content, all_tools, spline_tool_names, logger):
     """
-    Find TextPlus/Text3D tools where StyledText is set directly (not via SourceOp).
-    Skip any whose name already appears in spline_tools.
+    Find TextPlus/Text3D tools with inline (non-animated) StyledText.
+    Handles both plain and bracket input formats.
     """
-    already_found = {t["tool_name"] for t in spline_tools}
     elements = []
-    pattern = re.compile(r'(\w+)\s*=\s*(TextPlus|Text3D)\s*\{', re.MULTILINE)
 
-    for match in pattern.finditer(content):
-        name = match.group(1)
-        if name in already_found or name in ("Input", "Value", "Source", "SourceOp"):
+    for name, tool_type, block, position in all_tools:
+        if tool_type not in TEXT_TOOL_TYPES:
+            continue
+        if name in spline_tool_names:
             continue
 
-        region = content[match.end():match.end() + 8000]
+        inputs = find_inputs_block(block)
 
-        # Only include if StyledText has an inline Value (not a SourceOp)
-        tm = re.search(
-            r'\["StyledText"\]\s*=\s*Input\s*\{\s*Value\s*=\s*"([^"]*)"',
-            region
+        # Skip if StyledText is driven by a SourceOp (spline-animated)
+        if get_input_sourceop(inputs, "StyledText"):
+            continue
+
+        # Get the text value
+        text_val = get_input_string(inputs, "StyledText")
+        if text_val is None:
+            continue
+
+        # Get font info
+        font_val = get_input_string(inputs, "Font") or ""
+        style_val = get_input_string(inputs, "Style") or ""
+        size_val = get_input_number(inputs, "Size")
+
+        # Get text color
+        color = {}
+        for channel, label in [("Red1", "r"), ("Green1", "g"), ("Blue1", "b")]:
+            val = get_input_number(inputs, channel)
+            if val is not None:
+                color[label] = val
+
+        logger.info(
+            f"  Inline text [{name}]: \"{text_val}\" "
+            f"(font: {font_val} {style_val})"
         )
-        if not tm:
-            continue
 
-        text_val = tm.group(1)
-        font_val = ""
-        fm = re.search(r'\["Font"\]\s*=\s*Input\s*\{\s*Value\s*=\s*"([^"]*)"', region)
-        if fm:
-            font_val = fm.group(1)
-
-        logger.info(f"  Inline text [{name}]: \"{text_val}\" (font: {font_val})")
         elements.append({
             "type": "text",
             "tool_name": name,
+            "tool_type": tool_type,
             "spline_name": None,
             "source": "inline",
             "current_values": [text_val] if text_val else [],
@@ -292,76 +261,104 @@ def find_inline_text_tools(content, spline_tools, logger):
             "new_value": None,
             "new_values": None,
             "font": font_val,
-            "position": match.start(),
+            "font_style": style_val,
+            "font_size": size_val if size_val else 0.05,
+            "text_color": color,
+            "position": position,
+        })
+
+    return elements
+
+
+def find_text_color_elements(all_tools, logger):
+    """
+    Find text color (Red1/Green1/Blue1) in TextPlus/Text3D tools.
+    Returns these as separate changeable color elements.
+    """
+    elements = []
+
+    for name, tool_type, block, position in all_tools:
+        if tool_type not in TEXT_TOOL_TYPES:
+            continue
+
+        inputs = find_inputs_block(block)
+
+        r = get_input_number(inputs, "Red1")
+        g = get_input_number(inputs, "Green1")
+        b = get_input_number(inputs, "Blue1")
+
+        # Only create element if at least one channel is explicitly set
+        if r is None and g is None and b is None:
+            continue
+
+        r = r if r is not None else 0.0
+        g = g if g is not None else 0.0
+        b = b if b is not None else 0.0
+
+        hex_color = rgb_float_to_hex(r, g, b)
+        logger.info(f"  Text color [{name}]: {hex_color}")
+
+        elements.append({
+            "type": "text_color",
+            "tool_name": name,
+            "tool_type": tool_type,
+            "current_value": hex_color,
+            "current_rgb": {"r": r, "g": g, "b": b},
+            "new_value": None,
+            "position": position,
         })
 
     return elements
 
 
 # ======================================================================
-# Font detection from BezierSpline (e.g. Text1Font = BezierSpline)
+# Image / Video Detection
 # ======================================================================
 
-def find_font_splines(content, logger):
-    """Extract font family names from <ToolName>Font = BezierSpline blocks."""
-    fonts = set()
-    pattern = re.compile(r'\w+Font\s*=\s*BezierSpline\s*\{', re.MULTILINE)
-    for match in pattern.finditer(content):
-        block = extract_block(content, match.end())
-        for font_name in re.findall(
-            r'Value\s*=\s*Text\s*\{\s*Value\s*=\s*"([^"]+)"\s*\}', block
-        ):
-            fonts.add(font_name)
-    return fonts
-
-
-# ======================================================================
-# Loader / MediaIn detection (Clips > Clip > Filename pattern)
-# ======================================================================
-
-def find_loader_tools(content, logger):
+def find_loader_tools(content, all_tools, logger):
     """
-    Find Loader tools.  Filename lives inside:
-        MediaIn1 = Loader {
-            ...
-            Clips {
-                Clip {
-                    Filename = "/path/to/file.png",
-                    ...
-                }
-            }
-        }
-    Also handles MEDIA_PATH in CustomData as a fallback.
+    Find all Loader tools and extract their Filename.
+    Handles all known filename storage patterns:
+      1. Clips { Clip { Filename = "path" } }
+      2. Filename = Input { Value = "path" }
+      3. Filename = "path" (direct in Clips block)
+      4. MEDIA_PATH in CustomData
     """
     elements = []
-    pattern = re.compile(r'(\w+)\s*=\s*Loader\s*\{', re.MULTILINE)
 
-    for match in pattern.finditer(content):
-        name = match.group(1)
-        if name in ("Input", "Value", "Source", "SourceOp"):
+    for name, tool_type, block, position in all_tools:
+        if tool_type != "Loader":
             continue
 
-        block = extract_block(content, match.end())
-
-        # Primary: Filename inside Clips = { Clip { ... } } block
         filename = ""
-        clips_m = re.search(r'Clips\s*=\s*\{', block)
+
+        # Method 1: Filename inside Clips block
+        clips_m = re.search(r'\bClips\s*=\s*\{', block)
         if clips_m:
             clips_block = extract_block(block, clips_m.end())
             fn_m = re.search(r'Filename\s*=\s*"([^"]*)"', clips_block)
             if fn_m:
                 filename = fn_m.group(1)
 
-        # Fallback: MEDIA_PATH in CustomData
+        # Method 2: Filename as Input value
+        if not filename:
+            inputs = find_inputs_block(block)
+            fn = get_input_string(inputs, "Filename")
+            if fn:
+                filename = fn
+
+        # Method 3: MEDIA_PATH in CustomData
         if not filename:
             mp_m = re.search(r'MEDIA_PATH\s*=\s*"([^"]+)"', block)
             if mp_m:
                 filename = mp_m.group(1)
 
         ext = os.path.splitext(filename)[1].lower() if filename else ""
-        media_type = "video" if ext in (".mp4", ".mov", ".avi", ".mkv", ".webm") else "image"
+        video_exts = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".mxf", ".wmv", ".flv"}
+        media_type = "video" if ext in video_exts else "image"
 
         logger.info(f"  {media_type.capitalize()} slot [{name}]: \"{filename}\"")
+
         elements.append({
             "type": "image",
             "tool_name": name,
@@ -369,79 +366,55 @@ def find_loader_tools(content, logger):
             "media_subtype": media_type,
             "current_value": filename if filename else "(empty slot)",
             "new_value": None,
-            "position": match.start(),
+            "position": position,
         })
 
     return elements
 
 
+def find_mediain_tools(all_tools, logger):
+    """Find MediaIn tools (Resolve timeline media references)."""
+    elements = []
+    for name, tool_type, block, position in all_tools:
+        if tool_type != "MediaIn":
+            continue
+        logger.info(f"  Media slot [{name}]: (timeline reference)")
+        elements.append({
+            "type": "image",
+            "tool_name": name,
+            "tool_type": "MediaIn",
+            "media_subtype": "timeline_media",
+            "current_value": "(Resolve timeline media)",
+            "new_value": None,
+            "position": position,
+        })
+    return elements
+
+
 # ======================================================================
-# Background color detection (values live in named BezierSplines)
+# Background Color Detection
 # ======================================================================
 
-def find_background_tools(content, logger):
+def find_background_tools(content, all_tools, logger):
     """
-    Find Background tools.  Colors are driven by named splines:
-        Background1TopLeftRed = BezierSpline { KeyFrames { [t] = { 0.96, ... } } }
-
-    We read the first numeric keyframe value for R/G/B.
-    We also need to detect the Background tool itself so we know the name.
+    Find all Background tools and extract their color.
+    Colors can be inline or driven by BezierSplines.
     """
     elements = []
-    bg_pattern = re.compile(r'(\w+)\s*=\s*Background\s*\{', re.MULTILINE)
 
-    for match in bg_pattern.finditer(content):
-        name = match.group(1)
-        if name in ("Input", "Value", "Source", "SourceOp"):
+    for name, tool_type, block, position in all_tools:
+        if tool_type != "Background":
             continue
 
-        block = extract_block(content, match.end())
+        inputs = find_inputs_block(block)
 
-        # Check whether TopLeftRed is inline or via SourceOp
-        r_val = g_val = b_val = None
+        r_val = _get_color_channel(content, inputs, "TopLeftRed")
+        g_val = _get_color_channel(content, inputs, "TopLeftGreen")
+        b_val = _get_color_channel(content, inputs, "TopLeftBlue")
 
-        # Inline case
-        for key, label in [("TopLeftRed", "r"), ("TopLeftGreen", "g"), ("TopLeftBlue", "b")]:
-            cm = re.search(
-                rf'\["{key}"\]\s*=\s*Input\s*\{{\s*Value\s*=\s*([\d.]+)', block
-            )
-            if cm:
-                if label == "r":
-                    r_val = float(cm.group(1))
-                elif label == "g":
-                    g_val = float(cm.group(1))
-                elif label == "b":
-                    b_val = float(cm.group(1))
-
-        # SourceOp case — look up the named spline
-        for key, label in [("TopLeftRed", "r"), ("TopLeftGreen", "g"), ("TopLeftBlue", "b")]:
-            if label == "r" and r_val is not None:
-                continue
-            if label == "g" and g_val is not None:
-                continue
-            if label == "b" and b_val is not None:
-                continue
-
-            src_m = re.search(
-                rf'\["{key}"\]\s*=\s*Input\s*\{{\s*SourceOp\s*=\s*"(\w+)"', block
-            )
-            if src_m:
-                spline_name = src_m.group(1)
-                val = read_first_spline_value(content, spline_name)
-                if val is not None:
-                    if label == "r":
-                        r_val = val
-                    elif label == "g":
-                        g_val = val
-                    elif label == "b":
-                        b_val = val
-
-        r_val = r_val or 0.0
-        g_val = g_val or 0.0
-        b_val = b_val or 0.0
         hex_color = rgb_float_to_hex(r_val, g_val, b_val)
-
         logger.info(f"  Color slot [{name}]: {hex_color}")
+
         elements.append({
             "type": "color",
             "tool_name": name,
@@ -449,41 +422,65 @@ def find_background_tools(content, logger):
             "current_value": hex_color,
             "current_rgb": {"r": r_val, "g": g_val, "b": b_val},
             "new_value": None,
-            "position": match.start(),
+            "position": position,
         })
 
     return elements
 
 
+def _get_color_channel(full_content, inputs_block, channel_name):
+    """Get a color channel value, checking inline first then SourceOp spline."""
+    val = get_input_number(inputs_block, channel_name)
+    if val is not None:
+        return val
+
+    sourceop = get_input_sourceop(inputs_block, channel_name)
+    if sourceop:
+        spline_val = read_first_spline_value(full_content, sourceop)
+        if spline_val is not None:
+            return spline_val
+
+    return 0.0
+
+
 # ======================================================================
-# Helpers
+# Font Detection
 # ======================================================================
 
-def extract_block(content, start_pos):
+def find_all_fonts(content, all_tools, logger):
     """
-    Extract the content of a Lua-style { } block starting at start_pos.
-    start_pos should point just AFTER the opening '{'.
-    Returns the inner content string (without the outer braces).
+    Detect all font names used in the .comp file.
+    Checks both inline inputs and BezierSpline keyframes.
     """
-    depth = 1
-    i = start_pos
-    n = len(content)
-    while i < n and depth > 0:
-        c = content[i]
-        if c == '{':
-            depth += 1
-        elif c == '}':
-            depth -= 1
-        i += 1
-    return content[start_pos:i - 1]
+    fonts = set()
 
+    # From inline Font inputs in text tools
+    for name, tool_type, block, position in all_tools:
+        if tool_type not in TEXT_TOOL_TYPES:
+            continue
+        inputs = find_inputs_block(block)
+        font = get_input_string(inputs, "Font")
+        if font:
+            fonts.add(font)
+
+    # From Font BezierSplines
+    spline_pat = re.compile(r'\w+Font\s*=\s*BezierSpline\s*\{', re.MULTILINE)
+    for match in spline_pat.finditer(content):
+        block = extract_block(content, match.end())
+        for font_name in re.findall(
+            r'Value\s*=\s*Text\s*\{\s*Value\s*=\s*"([^"]+)"\s*\}', block
+        ):
+            fonts.add(font_name)
+
+    return fonts
+
+
+# ======================================================================
+# Spline Helpers
+# ======================================================================
 
 def read_first_spline_value(content, spline_name):
-    """
-    Read the first numeric keyframe value from a named BezierSpline.
-    E.g. Background1TopLeftRed = BezierSpline { KeyFrames { [t] = { 0.96, ... } } }
-    Returns float or None.
-    """
+    """Read the first numeric keyframe value from a named BezierSpline."""
     pattern = re.compile(
         rf'{re.escape(spline_name)}\s*=\s*BezierSpline\s*\{{', re.MULTILINE
     )
@@ -491,15 +488,193 @@ def read_first_spline_value(content, spline_name):
     if not m:
         return None
     block = extract_block(content, m.end())
-    # First keyframe: [timestamp] = { numeric_value, ...}
     val_m = re.search(r'\[\s*[\d.]+\s*\]\s*=\s*\{\s*([\d.]+)', block)
     if val_m:
         return float(val_m.group(1))
     return None
 
 
+# ======================================================================
+# Color Helpers
+# ======================================================================
+
 def rgb_float_to_hex(r, g, b):
     ri = max(0, min(255, int(r * 255)))
     gi = max(0, min(255, int(g * 255)))
     bi = max(0, min(255, int(b * 255)))
     return f"#{ri:02x}{gi:02x}{bi:02x}"
+
+
+# ======================================================================
+# Main Parser
+# ======================================================================
+
+def parse_comp_file(filepath, logger):
+    result = {
+        "valid": False,
+        "file_path": filepath,
+        "file_size_kb": 0,
+        "render_range": [0, 100],
+        "fps": 30,
+        "width": 1920,
+        "height": 1080,
+        "duration_frames": 100,
+        "duration_seconds": 3.33,
+        "raw_content": "",
+        "changeable_elements": [],
+        "all_fonts_used": [],
+        "resolution": {"width": 1920, "height": 1080},
+        "text_tools": [],
+        "loader_tools": [],
+    }
+
+    if not os.path.isfile(filepath):
+        logger.error(f"File not found: {filepath}")
+        return result
+
+    result["file_size_kb"] = round(os.path.getsize(filepath) / 1024, 2)
+    logger.info(f"File: {filepath}")
+    logger.info(f"Size: {result['file_size_kb']} KB")
+
+    # Read file with encoding fallback
+    content = None
+    for encoding in ["utf-8-sig", "utf-8", "latin-1", "utf-16"]:
+        try:
+            with open(filepath, "r", encoding=encoding) as f:
+                content = f.read()
+            break
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+
+    if content is None:
+        logger.error("Cannot read file with any known encoding.")
+        return result
+
+    result["raw_content"] = content
+
+    if "Composition" not in content and "Tools" not in content:
+        logger.error("File does not look like a Fusion .comp file.")
+        return result
+
+    result["valid"] = True
+    logger.info("Valid Fusion .comp file detected.")
+
+    # Global metadata
+    start, end = _extract_render_range(content)
+    result["render_range"] = [start, end]
+    result["duration_frames"] = end - start + 1
+    result["fps"] = _extract_fps(content)
+    result["duration_seconds"] = round(result["duration_frames"] / result["fps"], 2)
+
+    w, h = _extract_resolution(content)
+    result["width"] = w
+    result["height"] = h
+    result["resolution"] = {"width": w, "height": h}
+
+    logger.info(f"Range: {start}-{end} ({result['duration_frames']} frames)")
+    logger.info(f"FPS: {result['fps']}")
+    logger.info(f"Duration: {result['duration_seconds']}s")
+    logger.info(f"Resolution: {w}x{h}")
+
+    # Discover all tools
+    all_tools = find_all_tools(content)
+    logger.info(f"Tools discovered: {len(all_tools)}")
+    for name, ttype, _, _ in all_tools:
+        logger.info(f"  [{ttype}] {name}")
+
+    # Collect elements
+    elements = []
+
+    # 1. Text from BezierSpline keyframes (animated)
+    spline_texts = find_text_splines(content, logger)
+    spline_tool_names = {e["tool_name"] for e in spline_texts}
+    elements.extend(spline_texts)
+
+    # 2. Text from inline TextPlus/Text3D (static)
+    inline_texts = find_inline_text_tools(content, all_tools, spline_tool_names, logger)
+    elements.extend(inline_texts)
+
+    # 3. Image / video from Loader tools
+    loaders = find_loader_tools(content, all_tools, logger)
+    elements.extend(loaders)
+
+    # 4. Image / video from MediaIn tools
+    media_ins = find_mediain_tools(all_tools, logger)
+    elements.extend(media_ins)
+
+    # 5. Background colors
+    backgrounds = find_background_tools(content, all_tools, logger)
+    elements.extend(backgrounds)
+
+    # 6. Text colors
+    text_colors = find_text_color_elements(all_tools, logger)
+    elements.extend(text_colors)
+
+    # 7. Fonts
+    fonts_used = find_all_fonts(content, all_tools, logger)
+    result["all_fonts_used"] = sorted(fonts_used)
+
+    # Number elements
+    for i, elem in enumerate(elements):
+        elem["index"] = i + 1
+
+    result["changeable_elements"] = elements
+
+    # Compatibility lists
+    for e in elements:
+        if e["type"] == "text":
+            vals = e.get("current_values", [])
+            text_val = vals[0] if vals else e.get("current_value", "")
+            result["text_tools"].append({
+                "name": e["tool_name"],
+                "properties": {"styled_text": text_val}
+            })
+        elif e["type"] == "image":
+            result["loader_tools"].append({
+                "name": e["tool_name"],
+                "properties": {"filename": e["current_value"]}
+            })
+
+    # Summary
+    logger.info(f"Changeable elements: {len(elements)}")
+    logger.info(f"  Text: {sum(1 for e in elements if e['type'] == 'text')}")
+    logger.info(f"  Image/Video: {sum(1 for e in elements if e['type'] == 'image')}")
+    logger.info(f"  Background color: {sum(1 for e in elements if e['type'] == 'color')}")
+    logger.info(f"  Text color: {sum(1 for e in elements if e['type'] == 'text_color')}")
+    logger.info(f"  Fonts used: {sorted(fonts_used)}")
+
+    return result
+
+
+# ======================================================================
+# Metadata Extraction
+# ======================================================================
+
+def _extract_render_range(content):
+    for pat in [
+        r'RenderRange\s*=\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}',
+        r'GlobalRange\s*=\s*\{\s*(\d+)\s*,\s*(\d+)\s*\}',
+    ]:
+        m = re.search(pat, content)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return 0, 100
+
+
+def _extract_fps(content):
+    for pat in [r'\bFrameRate\s*=\s*(\d+)', r'\bFPS\s*=\s*(\d+)']:
+        m = re.search(pat, content)
+        if m:
+            return int(m.group(1))
+    return 30
+
+
+def _extract_resolution(content):
+    w, h = 1920, 1080
+    wm = re.search(r'\bWidth\s*=\s*Input\s*\{\s*Value\s*=\s*(\d+)', content)
+    hm = re.search(r'\bHeight\s*=\s*Input\s*\{\s*Value\s*=\s*(\d+)', content)
+    if wm:
+        w = int(wm.group(1))
+    if hm:
+        h = int(hm.group(1))
+    return w, h
